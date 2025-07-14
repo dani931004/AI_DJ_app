@@ -14,8 +14,16 @@ export class LiveMusicHelper extends EventTarget {
 
   private session: LiveMusicSession | null = null;
   private sessionPromise: Promise<LiveMusicSession> | null = null;
-  private isConnected = false;
+  private _connectionError = false;
   private playPauseCallback: (() => void) | null = null;
+
+  public get connectionError(): boolean {
+    return this._connectionError;
+  }
+  
+  private set connectionError(value: boolean) {
+    this._connectionError = value;
+  }
   private retryCount = 0;
 
   private filteredPrompts = new Set<string>();
@@ -54,26 +62,25 @@ export class LiveMusicHelper extends EventTarget {
         model: this.model,
         callbacks: {
           onmessage: async (e: LiveMusicServerMessage) => {
+            this.connectionError = false;
+            
             if (e.setupComplete) {
-              this.connectionError = false;
               this.retryCount = 0; // Reset retry count on successful connection
             }
+            
             if (e.filteredPrompt) {
               this.filteredPrompts = new Set([...this.filteredPrompts, e.filteredPrompt.text!])
               this.dispatchEvent(new CustomEvent<LiveMusicFilteredPrompt>('filtered-prompt', { detail: e.filteredPrompt }));
             }
+            
             if (e.serverContent?.audioChunks) {
               await this.processAudioChunks(e.serverContent.audioChunks);
             }
           },
-          onchunk: (chunk: AudioChunk) => {
-            this.isConnected = true;
-            console.log('[AI] Received audio chunk');
-            this.dispatchEvent(new CustomEvent('chunk', { detail: chunk }));
-          },
-          onerror: (error: Error) => {
-            console.error('[AI] Connection Error:', error);
-            this.isConnected = false;
+          onerror: (error: unknown) => {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[AI] Connection Error:', errorMessage);
+this.connectionError = true;
             this.retryCount++;
             
             // Log additional error details if available
@@ -89,7 +96,7 @@ export class LiveMusicHelper extends EventTarget {
           },
           onclose: () => {
             console.log('[AI] Connection closed');
-            this.isConnected = false;
+this.connectionError = true;
             this.handleConnectionError();
           }
         },
@@ -99,7 +106,7 @@ export class LiveMusicHelper extends EventTarget {
       const connectTime = ((performance.now() - startTime) / 1000).toFixed(2);
       
       if (session) {
-        this.isConnected = true;
+        this.connectionError = false;
         this.retryCount = 0; // Reset retry count on successful connection
         console.log(`[AI] Successfully connected in ${connectTime}s`);
         
