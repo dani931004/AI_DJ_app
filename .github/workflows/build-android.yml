@@ -45,18 +45,27 @@ jobs:
         echo "android.enableJetifier=true" >> local.properties
       
     - name: Build web app
-      run: npm run build
-      
+      run: |
+        npm run build
+        
     - name: Install Capacitor CLI
       run: npm install -g @capacitor/cli
       
     - name: Add Android platform
       run: npx cap add android
       
+    - name: Copy web assets
+      run: |
+        npx cap sync android
+        
     - name: Build debug APK
       working-directory: ./android
       run: |
-        ./gradlew assembleDebug
+        ./gradlew clean
+        ./gradlew assembleDebug --info
+        
+    - name: List APK files
+      run: find android -name "*.apk" -exec ls -la {} \;
         
     - name: Upload APK
       uses: actions/upload-artifact@v4

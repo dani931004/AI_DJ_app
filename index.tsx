@@ -17,9 +17,18 @@ const model = 'lyria-realtime-exp';
 
 function main() {
   const initialPrompts = buildInitialPrompts();
-
+  const appRoot = document.getElementById('app');
+  
+  if (!appRoot) {
+    console.error('Could not find app root element');
+    return;
+  }
+  
+  // Clear any existing content
+  appRoot.innerHTML = '';
+  
   const pdjMidi = new PromptDjMidi(initialPrompts);
-  document.body.appendChild(pdjMidi);
+  appRoot.appendChild(pdjMidi);
 
   const toastMessage = new ToastMessage();
   document.body.appendChild(toastMessage);
