@@ -96,12 +96,44 @@ function main() {
     pdjMidi.audioLevel = level;
   }));
 
+  // Listen for save-prompts events
+  pdjMidi.addEventListener('save-prompts', ((e: Event) => {
+    const customEvent = e as CustomEvent<Map<string, Prompt>>;
+    const prompts = customEvent.detail;
+    savePromptsToStorage(prompts);
+  }) as EventListener);
+
+}
+
+const STORAGE_KEY = 'promptdj_prompts';
+
+function savePromptsToStorage(prompts: Map<string, Prompt>) {
+  const promptsArray = Array.from(prompts.entries());
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(promptsArray));
+}
+
+function loadPromptsFromStorage(): Map<string, Prompt> | null {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return null;
+  
+  try {
+    const promptsArray = JSON.parse(saved);
+    return new Map(promptsArray);
+  } catch (e) {
+    console.error('Failed to load prompts from storage:', e);
+    return null;
+  }
 }
 
 function buildInitialPrompts() {
-  // Define the prompts to be active on start
-  const startOnTexts = ['House', 'Chill House'];
+  // Try to load from localStorage first
+  const savedPrompts = loadPromptsFromStorage();
+  if (savedPrompts) {
+    return savedPrompts;
+  }
 
+  // If no saved prompts, create default ones
+  const startOnTexts = ['House', 'Chill House'];
   const prompts = new Map<string, Prompt>();
 
   for (let i = 0; i < DEFAULT_PROMPTS.length; i++) {
@@ -118,6 +150,8 @@ function buildInitialPrompts() {
     });
   }
 
+  // Save the default prompts to storage
+  savePromptsToStorage(prompts);
   return prompts;
 }
 

@@ -27,6 +27,7 @@ export class PromptDjMidi extends LitElement {
       box-sizing: border-box;
       position: relative;
       padding: 15vmin 0 4vmin;
+      --reorder-handle-size: 16px;
     }
     #background {
       will-change: background-image;
@@ -41,6 +42,51 @@ export class PromptDjMidi extends LitElement {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 2.5vmin;
+      position: relative;
+    }
+
+    .prompt-item {
+      position: relative;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      cursor: move;
+    }
+
+    .prompt-item.dragging {
+      opacity: 0.8;
+      transform: scale(1.02);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      z-index: 10;
+    }
+
+    .reorder-handle {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: var(--reorder-handle-size);
+      height: var(--reorder-handle-size);
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      cursor: move;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 5;
+      transition: background 0.2s ease;
+    }
+
+    .reorder-handle:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .reorder-handle::before {
+      content: '';
+      width: 12px;
+      height: 2px;
+      background: white;
+      position: absolute;
+      box-shadow: 
+        0 -4px 0 white,
+        0 4px 0 white;
     }
     prompt-controller {
       width: 100%;
@@ -114,6 +160,8 @@ export class PromptDjMidi extends LitElement {
 
   private prompts: Map<string, Prompt>;
   private midiDispatcher: MidiDispatcher;
+  private dragStartIndex: number = -1;
+  private dragOverIndex: number = -1;
 
   @property({ type: Object }) audioRecorder?: AudioRecorder;
 
@@ -151,8 +199,9 @@ export class PromptDjMidi extends LitElement {
     }
   }
 
-  private handlePromptChanged(e: CustomEvent<Prompt>) {
-    const { promptId, text, weight, cc } = e.detail;
+  private handlePromptChanged(e: Event) {
+    const event = e as CustomEvent<Prompt>;
+    const { promptId, text, weight, cc } = event.detail;
     const prompt = this.prompts.get(promptId);
 
     if (!prompt) {
@@ -170,9 +219,21 @@ export class PromptDjMidi extends LitElement {
     this.prompts = newPrompts;
     this.requestUpdate();
 
+    // Save to localStorage
+    this.savePrompts();
+
     this.dispatchEvent(
       new CustomEvent('prompts-changed', { detail: this.prompts }),
     );
+  }
+
+  private savePrompts() {
+    const event = new CustomEvent('save-prompts', {
+      detail: this.prompts,
+      bubbles: true,
+      composed: true
+    });
+    this.dispatchEvent(event);
   }
 
   /** Generates radial gradients for each prompt based on weight and color. */
@@ -225,9 +286,9 @@ export class PromptDjMidi extends LitElement {
       const inputIds = await this.midiDispatcher.getMidiAccess();
       this.midiInputIds = inputIds;
       this.activeMidiInputId = this.midiDispatcher.activeMidiInputId;
-    } catch (e) {
+    } catch (e: unknown) {
       this.showMidi = false;
-      this.dispatchEvent(new CustomEvent('error', {detail: e.message}));
+      this.dispatchEvent(new CustomEvent('error', {detail: e instanceof Error ? e.message : 'Unknown error'}));
     }
   }
 
@@ -302,20 +363,90 @@ export class PromptDjMidi extends LitElement {
       <div id="grid">${this.renderPrompts()}</div>`;
   }
 
+  private handleDragStart(e: DragEvent, index: number) {
+    this.dragStartIndex = index;
+    const target = e.currentTarget as HTMLElement;
+    target.classList.add('dragging');
+    if (e.dataTransfer) {
+      e.dataTransfer.setData('text/plain', ''); // Required for Firefox
+      e.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  private handleDragOver(e: DragEvent, index: number) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+    if (this.dragStartIndex === -1) return;
+    this.dragOverIndex = index;
+    this.requestUpdate();
+  }
+
+  private handleDragEnd(e: DragEvent) {
+    const target = e.currentTarget as HTMLElement;
+    target.classList.remove('dragging');
+    
+    if (this.dragStartIndex !== -1 && this.dragOverIndex !== -1 && this.dragStartIndex !== this.dragOverIndex) {
+      const promptsArray = Array.from(this.prompts.entries());
+      const [removed] = promptsArray.splice(this.dragStartIndex, 1);
+      promptsArray.splice(this.dragOverIndex, 0, removed);
+      
+      const newPrompts = new Map(promptsArray);
+      this.prompts = newPrompts;
+      
+      // Save the new order to localStorage
+      this.savePrompts();
+      
+      this.dispatchEvent(
+        new CustomEvent('prompts-changed', { detail: this.prompts })
+      );
+    }
+    
+    this.dragStartIndex = -1;
+    this.dragOverIndex = -1;
+    this.requestUpdate();
+  }
+
   private renderPrompts() {
-    return [...this.prompts.values()].map((prompt) => {
-      return html`<prompt-controller
-        promptId=${prompt.promptId}
-        ?filtered=${this.filteredPrompts.has(prompt.text)}
-        cc=${prompt.cc}
-        text=${prompt.text}
-        weight=${prompt.weight}
-        color=${prompt.color}
-        .midiDispatcher=${this.midiDispatcher}
-        .showCC=${this.showMidi}
-        audioLevel=${this.audioLevel}
-        @prompt-changed=${this.handlePromptChanged}>
-      </prompt-controller>`;
+    return [...this.prompts.entries()].map(([, prompt], index) => {
+      const isDragging = this.dragStartIndex === index;
+      const isDragOver = this.dragOverIndex === index && this.dragStartIndex !== -1 && this.dragStartIndex !== index;
+      
+      // Create properly typed event handlers
+      const handleDragStart = (e: DragEvent) => this.handleDragStart(e, index);
+      const handleDragOver = (e: DragEvent) => this.handleDragOver(e, index);
+      const handleDragEnd = (e: DragEvent) => this.handleDragEnd(e);
+      const handleDragLeave = () => {
+        if (this.dragOverIndex === index) {
+          this.dragOverIndex = -1;
+          this.requestUpdate();
+        }
+      };
+      
+      return html`
+        <div 
+          class="prompt-item ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}"
+          draggable="true"
+          @dragstart=${handleDragStart}
+          @dragover=${handleDragOver}
+          @dragend=${handleDragEnd}
+          @dragleave=${handleDragLeave}
+        >
+          <div class="reorder-handle" title="Drag to reorder"></div>
+          <prompt-controller
+            promptId=${prompt.promptId}
+            ?filtered=${this.filteredPrompts.has(prompt.text)}
+            cc=${prompt.cc}
+            text=${prompt.text}
+            weight=${prompt.weight}
+            color=${prompt.color}
+            .midiDispatcher=${this.midiDispatcher}
+            .showCC=${this.showMidi}
+            audioLevel=${this.audioLevel}
+            @prompt-changed=${this.handlePromptChanged}>
+          </prompt-controller>
+        </div>`;
     });
   }
 }
