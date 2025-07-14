@@ -1,4 +1,13 @@
-import type { CapacitorConfig } from '@capacitor/cli';
+/// <reference types="@capacitor/cli" />
+
+declare const process: {
+  env: {
+    KEYSTORE_PASSWORD?: string;
+    KEY_PASSWORD?: string;
+  };
+};
+
+type CapacitorConfig = import('@capacitor/cli').CapacitorConfig;
 
 const config: CapacitorConfig = {
   appId: 'com.promptdj.midi',
