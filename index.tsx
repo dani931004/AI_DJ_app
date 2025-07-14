@@ -159,7 +159,7 @@ const DEFAULT_PROMPTS = [
   // House Genres
   { color: '#ff6600', text: 'House' },
   { color: '#5DADE2', text: 'Chill House' },
-  { color: '#283747', text: 'Deep House' },
+  { color: '#34A85A', text: 'Deep House' },
   { color: '#1ABC9C', text: 'Prog House' },
   { color: '#2af6de', text: 'Tech House' },
   { color: '#6c5ce7', text: 'Afro House' },
