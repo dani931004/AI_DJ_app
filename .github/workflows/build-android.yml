@@ -39,13 +39,12 @@ jobs:
         
     - name: Setup Android SDK
       uses: android-actions/setup-android@v2
-      with:
-        jdk-version: '17'
         
     - name: Set up Gradle
       uses: gradle/gradle-build-action@v2
       with:
         gradle-home-cache-cleanup: true
+        cache-encryption-key: ${{ runner.os }}-gradle
 
     - name: Set up Android environment
       run: |
