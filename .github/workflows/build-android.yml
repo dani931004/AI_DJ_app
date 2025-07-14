@@ -42,15 +42,24 @@ jobs:
       with:
         jdk-version: '17'
         
+    - name: Set up Gradle
+      uses: gradle/gradle-build-action@v2
+      with:
+        gradle-home-cache-cleanup: true
+
     - name: Set up Android environment
       run: |
         echo "org.gradle.java.home=$JAVA_HOME_17_X64" >> $GITHUB_ENV
         echo "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8" >> $GITHUB_ENV
+        echo "GRADLE_OPTS=-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true" >> $GITHUB_ENV
         
     - name: Configure Gradle
       run: |
         echo "android.useAndroidX=true" > local.properties
         echo "android.enableJetifier=true" >> local.properties
+        
+        # Update Gradle wrapper to version 8.2
+        ./gradlew wrapper --gradle-version=8.2 --distribution-type=all
       
     - name: Build web app with production settings
       run: |
