@@ -4,15 +4,6 @@ const config: CapacitorConfig = {
   appId: 'com.promptdj.midi',
   appName: 'PromptDJ MIDI',
   webDir: 'dist',
-  bundledWebRuntime: false,
-  server: {
-    androidScheme: 'https',
-    cleartext: true,
-    hostname: 'localhost',
-    url: 'http://localhost',
-    androidScheme: 'https',
-    allowNavigation: ['*']
-  },
   android: {
     allowMixedContent: true,
     buildOptions: {
@@ -21,7 +12,8 @@ const config: CapacitorConfig = {
       keystorePassword: process.env.KEYSTORE_PASSWORD || '',
       keystoreAliasPassword: process.env.KEY_PASSWORD || '',
     },
-    webContentsDebuggingEnabled: true
+    webContentsDebuggingEnabled: true,
+    captureInput: true
   },
   plugins: {
     SplashScreen: {

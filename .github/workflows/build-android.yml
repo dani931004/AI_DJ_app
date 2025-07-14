@@ -56,6 +56,15 @@ jobs:
         
         # Verify the build output
         ls -la dist/
+        
+        # Ensure index.html exists and has correct base href
+        if [ ! -f "dist/index.html" ]; then
+          echo "❌ Error: index.html not found in dist/"
+          exit 1
+        fi
+        
+        # Update base href in index.html for production
+        sed -i 's|<base href=".*">|<base href="./">|g' dist/index.html
       
     - name: Add Android platform if not exists
       run: |
