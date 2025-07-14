@@ -50,12 +50,19 @@ export class ToastMessage extends LitElement {
   @property({ type: Boolean }) showing = false;
 
   private renderMessageWithLinks() {
+    // Ensure message is a string
+    const message = String(this.message || '');
+    
+    // If message is empty, return empty string
+    if (!message) return '';
+    
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = this.message.split( urlRegex );
-    return parts.map( ( part, i ) => {
-      if ( i % 2 === 0 ) return part;
+    const parts = message.split(urlRegex);
+    
+    return parts.map((part, i) => {
+      if (i % 2 === 0) return part;
       return html`<a href=${part} target="_blank" rel="noopener">${part}</a>`;
-    } );
+    });
   }
 
   override render() {
