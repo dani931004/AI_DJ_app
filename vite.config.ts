@@ -23,8 +23,15 @@ export default defineConfig(({ mode }) => {
       },
       build: {
         outDir: 'dist',
-        assetsDir: './', // Put assets in the root of the build directory
-        emptyOutDir: true
+        assetsDir: 'assets',
+        emptyOutDir: true,
+        rollupOptions: {
+          output: {
+            entryFileNames: 'assets/[name].[hash].js',
+            chunkFileNames: 'assets/[name].[hash].js',
+            assetFileNames: 'assets/[name].[hash].[ext]'
+          }
+        }
       }
     };
 });

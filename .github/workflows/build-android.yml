@@ -21,7 +21,9 @@ jobs:
         cache: 'npm'
     
     - name: Install dependencies
-      run: npm ci
+      run: |
+        npm ci
+        npm install -g @capacitor/cli
       
     - name: Set up JDK 21
       uses: actions/setup-java@v3
@@ -44,33 +46,63 @@ jobs:
         echo "android.useAndroidX=true" > local.properties
         echo "android.enableJetifier=true" >> local.properties
       
-    - name: Build web app
+    - name: Build web app with production settings
       run: |
-        npm run build
+        # Ensure the dist directory is clean
+        rm -rf dist/
         
-    - name: Install Capacitor CLI
-      run: npm install -g @capacitor/cli
+        # Build the web app with production settings
+        NODE_ENV=production npm run build
+        
+        # Verify the build output
+        ls -la dist/
       
-    - name: Add Android platform
-      run: npx cap add android
-      
-    - name: Copy web assets
+    - name: Add Android platform if not exists
       run: |
+        if [ ! -d "android" ]; then
+          npx cap add android
+        fi
+      
+    - name: Sync web assets with Android
+      run: |
+        # Remove existing web assets to prevent conflicts
+        rm -rf android/app/src/main/assets/public/*
+        
+        # Copy the built web assets
         npx cap sync android
+        
+        # Verify the assets were copied
+        ls -la android/app/src/main/assets/public/
         
     - name: Build debug APK
       working-directory: ./android
       run: |
+        # Clean and build the APK with debug information
         ./gradlew clean
-        ./gradlew assembleDebug --info
+        ./gradlew assembleDebug --info --stacktrace
         
-    - name: List APK files
-      run: find android -name "*.apk" -exec ls -la {} \;
+    - name: Verify APK contents
+      run: |
+        # List the APK files
+        find android -name "*.apk" -exec ls -la {} \;
         
-    - name: Upload APK
+        # Check if the APK contains the web assets
+        unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E 'assets/public/|assets/index.html'
+        
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: android/app/build/outputs/apk/debug/app-debug.apk
         if-no-files-found: error
+        retention-days: 1
+        
+    - name: Upload build logs
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          android/**/build/reports/**/*
+          android/**/build/outputs/logs/**/*
         retention-days: 1
