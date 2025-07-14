@@ -19,30 +19,39 @@ import { AudioRecorder } from '../utils/AudioRecorder';
 export class PromptDjMidi extends LitElement {
   static override styles = css`
     :host {
-      min-height: 100%;
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: flex-start;
       align-items: center;
       box-sizing: border-box;
       position: relative;
-      padding: 15vmin 0 4vmin;
+      padding: 2vmin 0;
       --reorder-handle-size: 16px;
+      max-width: 100%;
+      width: 100%;
+      overflow: hidden;
     }
     #background {
       will-change: background-image;
       position: absolute;
-      height: 100%;
-      width: 100%;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       z-index: -1;
       background: #111;
+      max-width: 100%;
     }
     #grid {
-      width: 80vmin;
+      width: 95%;
+      max-width: 100%;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 2.5vmin;
+      grid-template-columns: repeat(15, 1fr);
+      gap: 0.4vmin;
       position: relative;
+      padding: 1vmin;
+      margin: 12vmin auto 2vmin; /* Increased top margin to prevent overlap with buttons */
     }
 
     .prompt-item {
@@ -98,17 +107,19 @@ export class PromptDjMidi extends LitElement {
     #buttons {
       position: fixed;
       top: 2vmin;
-      left: 2vmin;
-      padding: 1vmin;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 1.5vmin 3vmin;
       display: flex;
-      gap: 1.5vmin;
-      z-index: 10;
+      gap: 2vmin;
+      z-index: 100;
       align-items: center;
-      background: rgba(0, 0, 0, 0.25);
-      backdrop-filter: blur(5px);
-      -webkit-backdrop-filter: blur(5px);
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-radius: 50px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
     }
     button, a.button {
       font: inherit;
