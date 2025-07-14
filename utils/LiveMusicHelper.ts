@@ -14,8 +14,9 @@ export class LiveMusicHelper extends EventTarget {
 
   private session: LiveMusicSession | null = null;
   private sessionPromise: Promise<LiveMusicSession> | null = null;
-  private connectionError = true;
+  private isConnected = false;
   private playPauseCallback: (() => void) | null = null;
+  private retryCount = 0;
 
   private filteredPrompts = new Set<string>();
   private nextStartTime = 0;
@@ -44,7 +45,11 @@ export class LiveMusicHelper extends EventTarget {
   }
 
   private async connect(): Promise<LiveMusicSession> {
+    console.log('[AI] Starting connection to model:', this.model);
     try {
+      console.log('[AI] Initializing connection (attempt', this.retryCount + 1, ')');
+      
+      const startTime = performance.now();
       this.sessionPromise = this.ai.live.music.connect({
         model: this.model,
         callbacks: {
@@ -61,11 +66,52 @@ export class LiveMusicHelper extends EventTarget {
               await this.processAudioChunks(e.serverContent.audioChunks);
             }
           },
-          onerror: () => this.handleConnectionError(),
-          onclose: () => this.handleConnectionError(),
+          onchunk: (chunk: AudioChunk) => {
+            this.isConnected = true;
+            console.log('[AI] Received audio chunk');
+            this.dispatchEvent(new CustomEvent('chunk', { detail: chunk }));
+          },
+          onerror: (error: Error) => {
+            console.error('[AI] Connection Error:', error);
+            this.isConnected = false;
+            this.retryCount++;
+            
+            // Log additional error details if available
+            const errorInfo: any = {};
+            if ('status' in (error as any)) errorInfo.status = (error as any).status;
+            if ('response' in (error as any)) errorInfo.response = (error as any).response;
+            
+            if (Object.keys(errorInfo).length > 0) {
+              console.error('[AI] Error details:', errorInfo);
+            }
+            
+            this.dispatchEvent(new CustomEvent('error', { detail: error }));
+          },
+          onclose: () => {
+            console.log('[AI] Connection closed');
+            this.isConnected = false;
+            this.handleConnectionError();
+          }
         },
       });
-      return this.sessionPromise;
+      
+      const session = await this.sessionPromise;
+      const connectTime = ((performance.now() - startTime) / 1000).toFixed(2);
+      
+      if (session) {
+        this.isConnected = true;
+        this.retryCount = 0; // Reset retry count on successful connection
+        console.log(`[AI] Successfully connected in ${connectTime}s`);
+        
+        // Log basic session info (without accessing potentially private properties)
+        try {
+          console.log('[AI] Session ready');
+        } catch (e) {
+          console.log('[AI] Session established');
+        }
+      }
+      
+      return session;
     } catch (error) {
       this.handleConnectionError();
       throw error;
