@@ -156,27 +156,78 @@ function buildInitialPrompts() {
 }
 
 const DEFAULT_PROMPTS = [
+  // House Genres
   { color: '#ff6600', text: 'House' },
-  { color: '#ff0000', text: 'Techno' },
   { color: '#5DADE2', text: 'Chill House' },
   { color: '#283747', text: 'Deep House' },
-  { color: '#1ABC9C', text: 'Progressive House' },
-  { color: '#9900ff', text: 'Bossa Nova' },
-  { color: '#5200ff', text: 'Chillwave' },
+  { color: '#1ABC9C', text: 'Prog House' },
+  { color: '#2af6de', text: 'Tech House' },
+  { color: '#6c5ce7', text: 'Afro House' },
+  { color: '#00b894', text: 'Organic House' },
+  { color: '#e84393', text: 'Bass House' },
+  { color: '#00cec9', text: 'Lo-Fi House' },
+  { color: '#fd79a8', text: 'Slap House' },
+  { color: '#6c5ce7', text: 'G-House' },
+  { color: '#ff7675', text: 'Big Room' },
+  { color: '#a29bfe', text: 'Future House' },
+  { color: '#fd79a8', text: 'Tropical House' },
+  { color: '#e84393', text: 'Jersey Club' },
+  
+  // Techno Genres
+  { color: '#ff0000', text: 'Techno' },
+  { color: '#ff6b6b', text: 'Melodic Techno' },
+  { color: '#00b894', text: 'Minimal Techno' },
+  { color: '#d63031', text: 'Hard Techno' },
+  { color: '#e17055', text: 'Acid Techno' },
+  { color: '#6c5ce7', text: 'Indust Techno' },
+  { color: '#00b894', text: 'Dub Techno' },
+  { color: '#fd79a8', text: 'Hypno Techno' },
+  { color: '#a29bfe', text: 'Schranz' },
+  { color: '#00cec9', text: 'Ambient Tech' },
+  
+  // Drum and Bass & Related
   { color: '#ff25f6', text: 'Drum and Bass' },
-  { color: '#2af6de', text: 'Post Punk' },
-  { color: '#ffdd28', text: 'Shoegaze' },
-  { color: '#2af6de', text: 'Funk' },
-  { color: '#9900ff', text: 'Chiptune' },
-  { color: '#3dffab', text: 'Lush Strings' },
-  { color: '#d8ff3e', text: 'Sparkling Arpeggios' },
-  { color: '#d9b2ff', text: 'Staccato Rhythms' },
-  { color: '#3dffab', text: 'Punchy Kick' },
+  { color: '#ff9f43', text: 'Jungle' },
+  { color: '#5f27cd', text: 'Grime' },
+  { color: '#00cec9', text: 'UK Garage' },
+  { color: '#1dd1a1', text: 'Fut Garage' },
+  
+  // Bass Music
   { color: '#ffdd28', text: 'Dubstep' },
-  { color: '#ff25f6', text: 'K Pop' },
-  { color: '#d8ff3e', text: 'Neo Soul' },
-  { color: '#5200ff', text: 'Trip Hop' },
-  { color: '#d9b2ff', text: 'Thrash' },
+  { color: '#9900ff', text: 'Future Bass' },
+  { color: '#ff9f43', text: 'Trap' },
+  { color: '#e84393', text: 'Footwork' },
+  { color: '#00cec9', text: 'Juke' },
+  { color: '#ff9f43', text: 'Breakbeat' },
+  
+  // Melodic & Atmospheric
+  { color: '#6c5ce7', text: 'Chillwave' },
+  { color: '#00b894', text: 'Synthwave' },
+  { color: '#fd79a8', text: 'Dream Pop' },
+  { color: '#a29bfe', text: 'Shoegaze' },
+  { color: '#ff9f43', text: 'New Age' },
+  
+  // Global & World Influences
+  { color: '#e17055', text: 'Baile Funk' },
+  { color: '#6c5ce7', text: 'Kuduro' },
+  { color: '#00b894', text: 'Gqom' },
+  { color: '#fd79a8', text: 'Amapiano' },
+  { color: '#a29bfe', text: 'Afrobeat' },
+  { color: '#00cec9', text: 'Cumbia' },
+  { color: '#00cec9', text: 'E-Swing' },
+  
+  // Other Electronic
+  { color: '#6c5ce7', text: 'Electro' },
+  { color: '#ff9f43', text: 'Hyperpop' },
+  { color: '#1dd1a1', text: 'Decon Club' },
+  { color: '#5f27cd', text: 'Witch House' },
+  { color: '#ff9f43', text: 'Vaporwave' },
+  { color: '#e84393', text: 'Glitch' },
+  { color: '#00cec9', text: 'IDM' },
+  { color: '#6c5ce7', text: 'Breakcore' },
+  { color: '#ff6b6b', text: 'Hardstyle' },
+  { color: '#a29bfe', text: 'Eurodance' },
+  { color: '#00b894', text: 'Trance' }
 ];
 
 main();
