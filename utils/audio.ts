@@ -1,18 +1,29 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 
-function decode(base64: string) {
+/**
+ * Decodes a Base64 string into a Uint8Array.
+ */
+function decode(base64: string): Uint8Array {
   const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
 }
 
+/**
+ * Decodes raw PCM Int16 audio data into an AudioBuffer.
+ *
+ * @param data - Uint8Array containing interleaved PCM Int16 samples.
+ * @param ctx - The AudioContext to create the buffer in.
+ * @param sampleRate - Sample rate of the audio (e.g., 44100).
+ * @param numChannels - Number of channels (1=mono, 2=stereo).
+ * @returns Promise resolving to an AudioBuffer.
+ */
 async function decodeAudioData(
   data: Uint8Array,
   ctx: AudioContext,
@@ -22,19 +33,24 @@ async function decodeAudioData(
   if (numChannels <= 0) {
     throw new Error('Number of channels must be greater than 0.');
   }
+  if (data.length % (2 * numChannels) !== 0) {
+    console.warn('Warning: Data length is not aligned to complete frames. Some samples may be ignored.');
+  }
 
-  const numFrames = data.length / 2 / numChannels;
+  const numFrames = Math.floor(data.length / 2 / numChannels);
   const buffer = ctx.createBuffer(numChannels, numFrames, sampleRate);
 
-  const dataInt16 = new Int16Array(data.buffer);
+  // Use DataView for correct endianness handling
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
-  // De-interleave and copy to the audio buffer channels without creating
-  // intermediate arrays. This is much more efficient.
-  for (let i = 0; i < numChannels; i++) {
-    const channelData = buffer.getChannelData(i);
-    for (let j = 0; j < numFrames; j++) {
-      // Normalize Int16 to Float32 range [-1.0, 1.0]
-      channelData[j] = dataInt16[j * numChannels + i] / 32768.0;
+  // De-interleave and normalize samples
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let frame = 0; frame < numFrames; frame++) {
+      const sampleIndex = (frame * numChannels + channel) * 2;
+      const int16 = view.getInt16(sampleIndex, true); // Little-endian
+      // Clamp to [-1.0, 1.0]
+      channelData[frame] = Math.max(-1, Math.min(1, int16 / 32768));
     }
   }
 
