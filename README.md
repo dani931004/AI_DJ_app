@@ -4,80 +4,49 @@ A real-time music generation application powered by Google's Gemini AI, designed
 
 ## Features
 
-- **Real-time music generation using Google's Gemini AI**
-  - Uses Google's advanced AI model (`lyria-realtime-exp`) to generate high-quality music in real-time
-  - Supports real-time text-to-music generation with AI filtering
-  - Includes safety filtering for generated content
-  - Maintains musical coherence through AI prompt management
+-   **Real-time Music Generation**:
+    -   Harnesses Google's advanced `lyria-realtime-exp` AI model to generate high-fidelity music in real-time.
+    -   Experience dynamic text-to-music generation with intelligent AI filtering for seamless musical coherence.
+    -   Built-in safety filters ensure generated content remains appropriate.
 
-- **Auto DJ mode**
-  - Creates a DJ-style playlist that transitions between different music genres
-  - Automatically generates a sequence of genre transitions every 30 seconds
-  - Uses AI to create smooth transitions between musical styles
-  - Maintains musical coherence while exploring different genres
-  - Continuously refreshes the playlist to provide endless variety
+-   **Interactive Genre Curation**:
+    -   Explore a vast library of **78 genres**, from House and Techno to Synthwave and Ambient.
+    -   Dynamically activate and deactivate genre tiles with a single click to influence the AI.
+    -   The AI intelligently blends your selected genres, creating harmonious and unexpected fusions.
+    -   Your custom genre selections and tile arrangements are **automatically saved** in your browser and reloaded for a personalized experience every time.
 
-- **Volume control**
-  - Real-time volume adjustment during playback
-  - Smooth transitions between volume levels
-  - Maintains audio quality at all volume levels
+-   **Recording & Sharing**:
+    -   Capture your AI-generated music at any moment with a single click.
+    -   Recorded sessions are automatically prepared for download with descriptive filenames.
+    -   Download your recordings as high-quality audio files to share your unique AI DJ sets with the world.
 
-- **Play/Pause functionality**
-  - Toggle music playback with a dedicated button
-  - Maintains playback state across interactions
-  - Automatic error handling with user feedback
-  - Supports recording while playing
+-   **Live Audio Visualization**:
+    -   Immerse yourself in the sound with a dynamic, real-time audio waveform display.
+    -   Visually monitor the music's intensity and frequency spectrum as it's being generated.
 
-- **Audio visualization**
-  - Real-time audio waveform display
-  - Visual feedback of music intensity and frequency
-  - Helps monitor audio output quality
-  - Automatic visualization during playback
+-   **Mobile Ready (Android)**:
+    -   Built with Capacitor, allowing the web application to be seamlessly compiled and run as a native Android app.
+    -   Includes scripts and a GitHub Actions workflow for building and verifying the Android APK.
 
-- **Genre-based prompt management**
-  - Interactive genre buttons for music style selection
-  - Visual feedback for genre selection
-  - Supports multiple genre combinations
-  - AI-optimized genre transitions
+-   **Playback Controls & Notifications**:
+    -   Standard Play/Pause and Volume controls for easy management.
+    -   Stay informed with non-intrusive toast notifications for playback status, recording updates, and other important alerts.
 
 ## Project Structure
 
-- `components/`: Contains React components
-- `utils/`: Utility classes for audio analysis and music generation
-- `types.ts`: TypeScript type definitions
-- `index.tsx`: Main application entry point
+-   `components/`: Contains the primary React components that build the user interface.
+-   `utils/`: Houses utility classes for core functionalities like the `LiveMusicHelper` for AI interaction and the `AudioAnalyser` for visualization.
+-   `proxy-server/`: Contains a simple Express proxy server (optional, for securely managing API keys in a deployed environment).
+-   `scripts/`: Includes shell scripts for building and verifying the Android application.
+-   `index.tsx`: The main application entry point that orchestrates the AI, audio context, and UI component setup.
+-   `.github/workflows/`: Contains the CI/CD pipeline for automatically building the Android APK.
 
-## Setup and Running
+## Setup and Running (Web)
 
 **Prerequisites:**
-- Node.js
-- Google Gemini API key
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
+-   Node.js (v18.x or later)
+-   A Google Gemini API key.
 
-2. Set up environment variables:
-   - Set the `GEMINI_API_KEY` in [.env](.env) to your Gemini API key: `GEMINI_API_KEY=your_api_key_here`
-
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
-
-The app will be available at `http://localhost:5173`
-
-## Technical Details
-
-- Built with React and TypeScript
-- Uses Google's Gemini AI model (`lyria-realtime-exp`)
-- Implements real-time audio processing and analysis
-
-## Development
-
-The project uses Vite for build and development. The main entry point is `index.tsx` which sets up the audio context and AI integration.
-
-## License
-
-This project is licensed under the Apache-2.0 license. See [LICENSE](LICENSE) for details.
+1.  **Install dependencies:**
+    
