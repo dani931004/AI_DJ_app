@@ -57,7 +57,7 @@ export class LiveMusicHelper extends EventTarget {
         onmessage: async (e: LiveMusicServerMessage) => {
           if (e.setupComplete) {
             this.retryCount = 0; // Reset on successful connection
-            this.dispatchEvent(new CustomEvent('info', { detail: 'Connection successful. Preparing audio...' }));
+            // this.dispatchEvent(new CustomEvent('info', { detail: 'Connection successful. Preparing audio...' }));
           }
           if (e.filteredPrompt) {
             this.filteredPrompts = new Set([...this.filteredPrompts, e.filteredPrompt.text!])
@@ -123,7 +123,7 @@ export class LiveMusicHelper extends EventTarget {
     const audioBuffer = await decodeAudioData(
       decode(audioChunks[0].data!),
       this.audioContext,
-      48000,
+      30000,
       2,
     );
     const source = this.audioContext.createBufferSource();
@@ -198,7 +198,7 @@ export class LiveMusicHelper extends EventTarget {
           this.stop();
           return;
         }
-        this.dispatchEvent(new CustomEvent('info', { detail: `Connecting to model: ${this.model}` }));
+        // this.dispatchEvent(new CustomEvent('info', { detail: `Connecting to model: ${this.model}` }));
         this.session = await this.connect();
         try {
           await this.session.setWeightedPrompts({

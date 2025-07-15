@@ -264,8 +264,8 @@ export class PromptDjMidi extends LitElement {
 
   override updated(changedProperties: PropertyValues) {
     if (changedProperties.has('playbackState')) {
-      // If playback is not active (paused, stopped, loading), turn off Auto DJ.
-      if (this.playbackState !== 'playing' && this.isAutoDjActive) {
+      // Only stop Auto DJ if playback is completely stopped, not if it's paused or loading
+      if (this.playbackState === 'stopped' && this.isAutoDjActive) {
         this.stopAutoDj();
       }
     }
