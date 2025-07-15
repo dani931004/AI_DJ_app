@@ -124,7 +124,7 @@ export class LiveMusicHelper extends EventTarget {
     const audioBuffer = await decodeAudioData(
       decode(audioChunks[0].data!),
       this.audioContext,
-      45000,
+      48000,
       2,
     );
 
