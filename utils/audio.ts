@@ -33,24 +33,38 @@ async function decodeAudioData(
   if (numChannels <= 0) {
     throw new Error('Number of channels must be greater than 0.');
   }
-  if (data.length % (2 * numChannels) !== 0) {
-    console.warn('Warning: Data length is not aligned to complete frames. Some samples may be ignored.');
+
+  const frameSizeBytes = numChannels * 2;
+  const totalFrames = Math.floor(data.length / frameSizeBytes);
+
+  if (data.length % frameSizeBytes !== 0) {
+    console.warn('Warning: Data length is not aligned to complete frames. Trailing bytes will be ignored.');
   }
 
-  const numFrames = Math.floor(data.length / 2 / numChannels);
-  const buffer = ctx.createBuffer(numChannels, numFrames, sampleRate);
-
-  // Use DataView for correct endianness handling
+  const buffer = ctx.createBuffer(numChannels, totalFrames, sampleRate);
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
-  // De-interleave and normalize samples
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
-    for (let frame = 0; frame < numFrames; frame++) {
+    for (let frame = 0; frame < totalFrames; frame++) {
       const sampleIndex = (frame * numChannels + channel) * 2;
-      const int16 = view.getInt16(sampleIndex, true); // Little-endian
-      // Clamp to [-1.0, 1.0]
-      channelData[frame] = Math.max(-1, Math.min(1, int16 / 32768));
+      if (sampleIndex + 2 > data.byteLength) {
+        // Safety check
+        channelData[frame] = 0;
+        continue;
+      }
+      const int16 = view.getInt16(sampleIndex, true);
+      // Normalized [-1, +1). Use 32768 divisor for symmetry
+      const sample = int16 / 32768;
+      // Clamping for safety
+      channelData[frame] = Math.max(-1, Math.min(1, sample));
+    }
+
+    // Optional: fade out last 128 samples to prevent click
+    const fadeSamples = Math.min(128, totalFrames);
+    for (let i = 0; i < fadeSamples; i++) {
+      const fadeFactor = (fadeSamples - i) / fadeSamples;
+      channelData[totalFrames - fadeSamples + i] *= fadeFactor;
     }
   }
 
