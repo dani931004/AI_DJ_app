@@ -12,36 +12,59 @@ export class ToastMessage extends LitElement {
     .toast {
       line-height: 1.6;
       position: fixed;
-      top: 20px;
+      top: 2rem;
       left: 50%;
       transform: translateX(-50%);
-      background-color: #000;
+      background-color: rgba(20, 10, 30, 0.7);
       color: white;
-      padding: 15px;
-      border-radius: 5px;
+      padding: 15px 20px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 15px;
-      width: min(450px, 80vw);
-      transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1);
-      border: 2px solid #fff;
-      box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.5);
+      gap: 20px;
+      width: min(500px, 80vw);
+      transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.5s;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
       text-wrap: pretty;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .message {
+      flex-grow: 1;
     }
     button {
-      border-radius: 100px;
-      aspect-ratio: 1;
-      border: none;
-      color: #000;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      background: rgba(255,255,255,0.1);
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      line-height: 1;
+      flex-shrink: 0;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background: rgba(255,255,255,0.2);
     }
     .toast:not(.showing) {
-      transition-duration: 1s;
-      transform: translate(-50%, -200%);
+      transition-duration: 0.5s;
+      transform: translate(-50%, -200px);
+      opacity: 0;
+      pointer-events: none;
     }
     a {
-      color: #acacac;
+      color: #8ab4f8;
+      text-decoration: none;
+    }
+    a:hover {
       text-decoration: underline;
     }
   `;
@@ -50,19 +73,12 @@ export class ToastMessage extends LitElement {
   @property({ type: Boolean }) showing = false;
 
   private renderMessageWithLinks() {
-    // Ensure message is a string
-    const message = String(this.message || '');
-    
-    // If message is empty, return empty string
-    if (!message) return '';
-    
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = message.split(urlRegex);
-    
-    return parts.map((part, i) => {
-      if (i % 2 === 0) return part;
+    const parts = this.message.split( urlRegex );
+    return parts.map( ( part, i ) => {
+      if ( i % 2 === 0 ) return part;
       return html`<a href=${part} target="_blank" rel="noopener">${part}</a>`;
-    });
+    } );
   }
 
   override render() {

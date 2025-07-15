@@ -13,142 +13,113 @@ export class LiveMusicHelper extends EventTarget {
   private model: string;
 
   private session: LiveMusicSession | null = null;
-  private sessionPromise: Promise<LiveMusicSession> | null = null;
-  private _connectionError = false;
-  private playPauseCallback: (() => void) | null = null;
 
-  public get connectionError(): boolean {
-    return this._connectionError;
-  }
-  
-  private set connectionError(value: boolean) {
-    this._connectionError = value;
-  }
   private retryCount = 0;
+  private readonly maxRetries = 5;
+  private readonly retryDelay = 1000; // 1 second, then exponential backoff
 
   private filteredPrompts = new Set<string>();
   private nextStartTime = 0;
   private bufferTime = 2;
 
   public readonly audioContext: AudioContext;
-  public extraDestinations: AudioNode[] = [];
+  public extraDestination: AudioNode | null = null;
 
   private outputNode: GainNode;
-  private playbackState: PlaybackState = 'stopped';
+  private _playbackState: PlaybackState = 'stopped';
+  private volume = 1;
 
   private prompts: Map<string, Prompt>;
 
-  constructor(ai: GoogleGenAI, model: string) {
+  // Recording properties
+  private streamDestination: MediaStreamAudioDestinationNode;
+  private recorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
+
+  constructor(ai: GoogleGenAI, model: string, initialPrompts: Map<string, Prompt>) {
     super();
     this.ai = ai;
     this.model = model;
-    this.prompts = new Map();
+    this.prompts = initialPrompts;
     this.audioContext = new AudioContext({ sampleRate: 48000 });
     this.outputNode = this.audioContext.createGain();
+    this.streamDestination = this.audioContext.createMediaStreamDestination();
   }
 
-  private getSession(): Promise<LiveMusicSession> {
-    if (!this.sessionPromise) this.sessionPromise = this.connect();
-    return this.sessionPromise;
+  public get playbackState(): PlaybackState {
+    return this._playbackState;
   }
 
-  private async connect(): Promise<LiveMusicSession> {
-    console.log('[AI] Starting connection to model:', this.model);
-    try {
-      console.log('[AI] Initializing connection (attempt', this.retryCount + 1, ')');
-      
-      const startTime = performance.now();
-      this.sessionPromise = this.ai.live.music.connect({
-        model: this.model,
-        callbacks: {
-          onmessage: async (e: LiveMusicServerMessage) => {
-            this.connectionError = false;
-            
-            if (e.setupComplete) {
-              this.retryCount = 0; // Reset retry count on successful connection
-            }
-            
-            if (e.filteredPrompt) {
-              this.filteredPrompts = new Set([...this.filteredPrompts, e.filteredPrompt.text!])
-              this.dispatchEvent(new CustomEvent<LiveMusicFilteredPrompt>('filtered-prompt', { detail: e.filteredPrompt }));
-            }
-            
-            if (e.serverContent?.audioChunks) {
-              await this.processAudioChunks(e.serverContent.audioChunks);
-            }
-          },
-          onerror: (error: unknown) => {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error('[AI] Connection Error:', errorMessage);
-this.connectionError = true;
-            this.retryCount++;
-            
-            // Log additional error details if available
-            const errorInfo: any = {};
-            if ('status' in (error as any)) errorInfo.status = (error as any).status;
-            if ('response' in (error as any)) errorInfo.response = (error as any).response;
-            
-            if (Object.keys(errorInfo).length > 0) {
-              console.error('[AI] Error details:', errorInfo);
-            }
-            
-            this.dispatchEvent(new CustomEvent('error', { detail: error }));
-          },
-          onclose: () => {
-            console.log('[AI] Connection closed');
-this.connectionError = true;
-            this.handleConnectionError();
+  private connect(): Promise<LiveMusicSession> {
+    return this.ai.live.music.connect({
+      model: this.model,
+      callbacks: {
+        onmessage: async (e: LiveMusicServerMessage) => {
+          if (e.setupComplete) {
+            this.retryCount = 0; // Reset on successful connection
+            this.dispatchEvent(new CustomEvent('info', { detail: 'Connection successful. Preparing audio...' }));
+          }
+          if (e.filteredPrompt) {
+            this.filteredPrompts = new Set([...this.filteredPrompts, e.filteredPrompt.text!])
+            this.dispatchEvent(new CustomEvent<LiveMusicFilteredPrompt>('filtered-prompt', { detail: e.filteredPrompt }));
+          }
+          if (e.serverContent?.audioChunks) {
+            await this.processAudioChunks(e.serverContent.audioChunks);
           }
         },
-      });
-      
-      const session = await this.sessionPromise;
-      const connectTime = ((performance.now() - startTime) / 1000).toFixed(2);
-      
-      if (session) {
-        this.connectionError = false;
-        this.retryCount = 0; // Reset retry count on successful connection
-        console.log(`[AI] Successfully connected in ${connectTime}s`);
-        
-        // Log basic session info (without accessing potentially private properties)
-        try {
-          console.log('[AI] Session ready');
-        } catch (e) {
-          console.log('[AI] Session established');
-        }
-      }
-      
-      return session;
-    } catch (error) {
-      this.handleConnectionError();
-      throw error;
-    }
+        onerror: (e: ErrorEvent) => {
+          console.error('LiveMusicHelper.onerror', e);
+          const wasPlayingOrLoading = this._playbackState === 'playing' || this._playbackState === 'loading';
+          this.stop(); // sets state to stopped, session to null
+
+          if (wasPlayingOrLoading) {
+            if (this.retryCount < this.maxRetries) {
+              this.retryCount++;
+              const delay = this.retryDelay * Math.pow(2, this.retryCount - 1); // Exponential backoff
+              const originalErrorMessage = e.error?.message || e.message || 'Unknown error';
+              const detail = `Connection error (${originalErrorMessage}). Retrying in ${delay / 1000}s... (Attempt ${this.retryCount}/${this.maxRetries})`;
+              this.dispatchEvent(new CustomEvent('error', { detail }));
+              // setTimeout(() => this.play(), delay);
+            } else {
+              const message = e.error?.message || e.message;
+              const detail = `Connection error: ${message}. Giving up after ${this.maxRetries} retries.`;
+              this.dispatchEvent(new CustomEvent('error', { detail }));
+              this.retryCount = 0; // Reset for next manual play
+            }
+          }
+        },
+        onclose: (event?: CloseEvent) => {
+          const wasPlayingOrLoading = this._playbackState === 'playing' || this._playbackState === 'loading';
+
+          this.stop(); // sets state to stopped, session to null
+
+          if (wasPlayingOrLoading) {
+            if (this.retryCount < this.maxRetries) {
+              this.retryCount++;
+              const delay = this.retryDelay * Math.pow(2, this.retryCount - 1); // Exponential backoff
+              const reason = event ? `code ${event.code}` : 'no reason given';
+              const detail = `Connection closed (${reason}). Retrying in ${delay / 1000}s... (Attempt ${this.retryCount}/${this.maxRetries})`;
+              this.dispatchEvent(new CustomEvent('error', { detail }));
+              setTimeout(() => this.play(), delay);
+            } else {
+              const reason = event ? `Code: ${event.code}, Reason: ${event.reason || 'No reason provided'}` : 'No reason provided';
+              const detail = `Connection closed unexpectedly. ${reason}. Giving up after ${this.maxRetries} retries. Please try playing again.`;
+              this.dispatchEvent(new CustomEvent('error', { detail }));
+              this.retryCount = 0; // Reset for next manual play
+            }
+          }
+        },
+      },
+    });
   }
 
   private setPlaybackState(state: PlaybackState) {
-    this.playbackState = state;
+    this._playbackState = state;
     this.dispatchEvent(new CustomEvent('playback-state-changed', { detail: state }));
   }
 
-  private handleConnectionError() {
-    this.connectionError = true;
-    this.stop();
-    
-    // Dispatch error event
-    this.dispatchEvent(new CustomEvent('error', { 
-      detail: 'Connection error. Attempting to restart playback...' 
-    }));
-    
-    // Simulate a click on the play button after a short delay
-    setTimeout(() => {
-      if (this.playPauseCallback) {
-        this.playPauseCallback();
-      }
-    }, 1000);
-  }
-
   private async processAudioChunks(audioChunks: AudioChunk[]) {
-    if (this.playbackState === 'paused' || this.playbackState === 'stopped') return;
+    if (this._playbackState === 'paused' || this._playbackState === 'stopped') return;
     const audioBuffer = await decodeAudioData(
       decode(audioChunks[0].data!),
       this.audioContext,
@@ -161,7 +132,9 @@ this.connectionError = true;
     if (this.nextStartTime === 0) {
       this.nextStartTime = this.audioContext.currentTime + this.bufferTime;
       setTimeout(() => {
-        this.setPlaybackState('playing');
+        if (this._playbackState === 'loading') {
+          this.setPlaybackState('playing');
+        }
       }, this.bufferTime * 1000);
     }
     if (this.nextStartTime < this.audioContext.currentTime) {
@@ -189,59 +162,95 @@ this.connectionError = true;
       return;
     }
 
-    // store the prompts to set later if we haven't connected yet
-    // there should be a user interaction before calling setWeightedPrompts
     if (!this.session) return;
+
+    const weightedPrompts = this.activePrompts.map(({ text, weight }) => ({ text, weight }));
 
     try {
       await this.session.setWeightedPrompts({
-        weightedPrompts: this.activePrompts,
+        weightedPrompts,
       });
-    } catch (e: any) {
-      this.dispatchEvent(new CustomEvent('error', { detail: e.message }));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const detail = `Failed to update prompts: ${message}`;
+      this.dispatchEvent(new CustomEvent('error', { detail }));
       this.pause();
     }
   }, 200);
 
-  public async play() {
-    this.setPlaybackState('loading');
-    this.session = await this.getSession();
-    await this.setWeightedPrompts(this.prompts);
-    this.audioContext.resume();
-    this.session.play();
-    this.outputNode.connect(this.audioContext.destination);
-    for (const dest of this.extraDestinations) {
-      this.outputNode.connect(dest);
+  public setVolume(level: number) {
+    if (level < 0 || level > 1) return;
+    this.volume = level;
+    // only change the gain if audio is currently supposed to be audible
+    if (this._playbackState === 'playing' || this._playbackState === 'loading') {
+        // use setTargetAtTime for a smooth change to avoid clicks.
+        this.outputNode.gain.setTargetAtTime(this.volume, this.audioContext.currentTime, 0.02);
     }
-    this.outputNode.gain.setValueAtTime(0, this.audioContext.currentTime);
-    this.outputNode.gain.linearRampToValueAtTime(1, this.audioContext.currentTime + 0.1);
   }
 
-  public pause() {
+  public play = async () => {
+    this.setPlaybackState('loading');
+    try {
+      if (!this.session) {
+        const initialPrompts = this.activePrompts.map(({ text, weight }) => ({ text, weight }));
+        if (initialPrompts.length === 0) {
+          this.dispatchEvent(new CustomEvent('error', { detail: 'There needs to be one active prompt to play.' }));
+          this.stop();
+          return;
+        }
+        this.dispatchEvent(new CustomEvent('info', { detail: `Connecting to model: ${this.model}` }));
+        this.session = await this.connect();
+        try {
+          await this.session.setWeightedPrompts({
+            weightedPrompts: initialPrompts
+          });
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          const detail = `Failed to set initial prompts: ${message}`;
+          this.dispatchEvent(new CustomEvent('error', { detail }));
+          this.stop();
+          return;
+        }
+      }
+
+      this.audioContext.resume();
+      this.session!.play();
+      this.outputNode.connect(this.audioContext.destination);
+      this.outputNode.connect(this.streamDestination); // Connect for recording
+      if (this.extraDestination) this.outputNode.connect(this.extraDestination);
+      this.outputNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+      this.outputNode.gain.linearRampToValueAtTime(this.volume, this.audioContext.currentTime + 0.1);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const detail = `Playback failed: ${message}. This could be an issue with your API key, network, or browser.`;
+      this.dispatchEvent(new CustomEvent('error', { detail }));
+      this.stop();
+    }
+  }
+
+  public pause = () => {
     if (this.session) this.session.pause();
     this.setPlaybackState('paused');
-    this.outputNode.gain.setValueAtTime(1, this.audioContext.currentTime);
+    this.outputNode.gain.cancelScheduledValues(this.audioContext.currentTime);
     this.outputNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + 0.1);
     this.nextStartTime = 0;
-    this.outputNode = this.audioContext.createGain();
   }
 
-  public stop() {
+  public stop = () => {
     if (this.session) this.session.stop();
     this.setPlaybackState('stopped');
-    this.outputNode.gain.setValueAtTime(0, this.audioContext.currentTime);
-    this.outputNode.gain.linearRampToValueAtTime(1, this.audioContext.currentTime + 0.1);
+    this.outputNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+    this.outputNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + 0.1);
     this.nextStartTime = 0;
     this.session = null;
-    this.sessionPromise = null;
   }
 
-  public setPlayPauseCallback(callback: () => void) {
-    this.playPauseCallback = callback;
-  }
-
-  public async playPause() {
-    switch (this.playbackState) {
+  public playPause = async () => {
+    if (this._playbackState === 'paused' || this._playbackState === 'stopped') {
+      // User is initiating a play action, so it's not a retry.
+      this.retryCount = 0;
+    }
+    switch (this._playbackState) {
       case 'playing':
         return this.pause();
       case 'paused':
@@ -252,4 +261,37 @@ this.connectionError = true;
     }
   }
 
+  public startRecording = () => {
+    if (this.recorder?.state === 'recording') return;
+    this.recordedChunks = [];
+    const options = { mimeType: 'audio/webm; codecs=opus' };
+    try {
+      this.recorder = new MediaRecorder(this.streamDestination.stream, options);
+    } catch(e) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.dispatchEvent(new CustomEvent('error', { detail: `Recording failed: ${message}`}));
+      return;
+    }
+
+    this.recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        this.recordedChunks.push(event.data);
+      }
+    };
+
+    this.recorder.onstop = () => {
+      const blob = new Blob(this.recordedChunks, { type: options.mimeType });
+      const url = URL.createObjectURL(blob);
+      const filename = `prompt-dj-recording-${new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')}.webm`;
+      this.dispatchEvent(new CustomEvent('recording-finished', { detail: { url, filename } }));
+    };
+
+    this.recorder.start();
+  }
+
+  public stopRecording = () => {
+    if (this.recorder?.state === 'recording') {
+      this.recorder.stop();
+    }
+  }
 }

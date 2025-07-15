@@ -10,44 +10,23 @@ import { PromptDjMidi } from './components/PromptDjMidi';
 import { ToastMessage } from './components/ToastMessage';
 import { LiveMusicHelper } from './utils/LiveMusicHelper';
 import { AudioAnalyser } from './utils/AudioAnalyser';
-import { AudioRecorder } from './utils/AudioRecorder';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: 'v1alpha' });
 const model = 'lyria-realtime-exp';
 
 function main() {
-  const initialPrompts = buildInitialPrompts();
-  const appRoot = document.getElementById('app');
-  
-  if (!appRoot) {
-    console.error('Could not find app root element');
-    return;
-  }
-  
-  // Clear any existing content
-  appRoot.innerHTML = '';
-  
-  const pdjMidi = new PromptDjMidi(initialPrompts);
-  appRoot.appendChild(pdjMidi);
+  const { prompts, genreOrder } = buildInitialPrompts();
+
+  const pdjMidi = new PromptDjMidi(prompts, genreOrder, ai);
+  document.body.appendChild(pdjMidi);
 
   const toastMessage = new ToastMessage();
   document.body.appendChild(toastMessage);
 
-  const liveMusicHelper = new LiveMusicHelper(ai, model);
-  liveMusicHelper.setWeightedPrompts(initialPrompts);
-  
-  // Set up the play/pause callback for automatic reconnection
-  const handlePlayPause = () => {
-    liveMusicHelper.playPause();
-  };
-  liveMusicHelper.setPlayPauseCallback(handlePlayPause);
+  const liveMusicHelper = new LiveMusicHelper(ai, model, prompts);
 
   const audioAnalyser = new AudioAnalyser(liveMusicHelper.audioContext);
-  liveMusicHelper.extraDestinations.push(audioAnalyser.node);
-
-  const audioRecorder = new AudioRecorder(liveMusicHelper.audioContext);
-  liveMusicHelper.extraDestinations.push(audioRecorder.destinationNode);
-  pdjMidi.audioRecorder = audioRecorder;
+  liveMusicHelper.extraDestination = audioAnalyser.node;
 
   pdjMidi.addEventListener('prompts-changed', ((e: Event) => {
     const customEvent = e as CustomEvent<Map<string, Prompt>>;
@@ -55,179 +34,191 @@ function main() {
     liveMusicHelper.setWeightedPrompts(prompts);
   }));
 
+  pdjMidi.addEventListener('volume-changed', ((e: Event) => {
+    const customEvent = e as CustomEvent<number>;
+    liveMusicHelper.setVolume(customEvent.detail);
+  }));
+
   pdjMidi.addEventListener('play-pause', () => {
-    liveMusicHelper.playPause();
+    // This is an async call, so we should handle potential errors
+    // even if the underlying implementation is expected to catch them.
+    (async () => {
+      try {
+        await liveMusicHelper.playPause();
+      } catch (e) {
+        // This is a safeguard. Errors should ideally be handled within LiveMusicHelper
+        // and dispatched as custom 'error' events.
+        const message = e instanceof Error ? e.message : 'An unknown error occurred during playback.';
+        toastMessage.show(message);
+        if (liveMusicHelper.playbackState !== 'stopped') {
+           liveMusicHelper.stop();
+        }
+      }
+    })();
   });
+
+  pdjMidi.addEventListener('start-recording', () => {
+    liveMusicHelper.startRecording();
+  });
+
+  pdjMidi.addEventListener('stop-recording', () => {
+    liveMusicHelper.stopRecording();
+  });
+
+  liveMusicHelper.addEventListener('recording-finished', ((e: Event) => {
+    const customEvent = e as CustomEvent<{url: string, filename: string}>;
+    pdjMidi.onRecordingFinished(customEvent.detail);
+  }));
 
   liveMusicHelper.addEventListener('playback-state-changed', ((e: Event) => {
     const customEvent = e as CustomEvent<PlaybackState>;
     const playbackState = customEvent.detail;
     pdjMidi.playbackState = playbackState;
-    if (playbackState === 'playing') {
-      audioAnalyser.start();
-    } else {
-      audioAnalyser.stop();
-      if (audioRecorder.isRecording) {
-        audioRecorder.stop();
-      }
-    }
+    playbackState === 'playing' ? audioAnalyser.start() : audioAnalyser.stop();
   }));
 
   liveMusicHelper.addEventListener('filtered-prompt', ((e: Event) => {
     const customEvent = e as CustomEvent<LiveMusicFilteredPrompt>;
     const filteredPrompt = customEvent.detail;
-    toastMessage.show(filteredPrompt.filteredReason!)
-    pdjMidi.addFilteredPrompt(filteredPrompt.text!);
+    if (filteredPrompt.filteredReason) {
+      toastMessage.show(String(filteredPrompt.filteredReason));
+    }
+    if (filteredPrompt.text) {
+      pdjMidi.addFilteredPrompt(filteredPrompt.text);
+    }
   }));
 
   const errorToast = ((e: Event) => {
-    const customEvent = e as CustomEvent<string>;
-    const error = customEvent.detail;
-    toastMessage.show(error);
+    let message = 'An unknown error occurred.';
+    if (e instanceof CustomEvent) {
+      // The detail could be anything, so we convert it to a string.
+      const detail = e.detail;
+      if (typeof detail === 'string') {
+        message = detail;
+      } else if (detail) {
+        message = String(detail);
+      }
+    } else if (e instanceof Error) {
+      message = e.message;
+    }
+    toastMessage.show(message);
   });
 
   liveMusicHelper.addEventListener('error', errorToast);
   pdjMidi.addEventListener('error', errorToast);
-  audioRecorder.addEventListener('error', errorToast);
 
-  audioAnalyser.addEventListener('audio-level-changed', ((e: Event) => {
-    const customEvent = e as CustomEvent<number>;
-    const level = customEvent.detail;
-    pdjMidi.audioLevel = level;
-  }));
+  const infoToast = ((e: Event) => {
+    if (e instanceof CustomEvent && e.detail) {
+      toastMessage.show(String(e.detail));
+    }
+  });
+  liveMusicHelper.addEventListener('info', infoToast);
 
-  // Listen for save-prompts events
-  pdjMidi.addEventListener('save-prompts', ((e: Event) => {
-    const customEvent = e as CustomEvent<Map<string, Prompt>>;
-    const prompts = customEvent.detail;
-    savePromptsToStorage(prompts);
-  }) as EventListener);
-
-}
-
-const STORAGE_KEY = 'promptdj_prompts';
-
-function savePromptsToStorage(prompts: Map<string, Prompt>) {
-  const promptsArray = Array.from(prompts.entries());
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(promptsArray));
-}
-
-function loadPromptsFromStorage(): Map<string, Prompt> | null {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return null;
-  
-  try {
-    const promptsArray = JSON.parse(saved);
-    return new Map(promptsArray);
-  } catch (e) {
-    console.error('Failed to load prompts from storage:', e);
-    return null;
-  }
 }
 
 function buildInitialPrompts() {
-  // Try to load from localStorage first
-  const savedPrompts = loadPromptsFromStorage();
-  if (savedPrompts) {
-    return savedPrompts;
-  }
-
-  // If no saved prompts, create default ones
-  const startOnTexts = ['House', 'Chill House'];
   const prompts = new Map<string, Prompt>();
+  let promptCounter = 0;
 
-  for (let i = 0; i < DEFAULT_PROMPTS.length; i++) {
-    const promptId = `prompt-${i}`;
-    const prompt = DEFAULT_PROMPTS[i];
-    const { text, color } = prompt;
-    prompts.set(promptId, {
-      promptId,
-      text,
-      // Set weight to 1 if the prompt text is in our startOnTexts array, otherwise 0
-      weight: startOnTexts.includes(text) ? 1 : 0,
-      cc: i,
-      color,
-    });
+  // Create all prompts and map them by their text for easy lookup.
+  const promptsByText = new Map<string, Prompt>();
+  for (const row of GENRE_DATA) {
+    for (const genre of row) {
+      const promptId = `prompt-${promptCounter}`;
+      const prompt: Prompt = {
+        promptId,
+        text: genre.text,
+        weight: 0, // Will be set later
+        cc: promptCounter,
+        color: genre.color,
+      };
+      prompts.set(promptId, prompt);
+      promptsByText.set(genre.text, prompt);
+      promptCounter++;
+    }
   }
 
-  // Save the default prompts to storage
-  savePromptsToStorage(prompts);
-  return prompts;
+  // Load which genres were active from a previous session.
+  let activeGenreTexts: string[] | null = null;
+  try {
+    const savedGenres = localStorage.getItem('activeGenresPreset');
+    if (savedGenres) {
+      const parsed = JSON.parse(savedGenres);
+      if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+        activeGenreTexts = parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Could not load genre preset from localStorage.', e);
+    localStorage.removeItem('activeGenresPreset');
+  }
+
+  // Set the weight for each prompt based on the loaded active genres.
+  if (activeGenreTexts) {
+    prompts.forEach(p => {
+      if (activeGenreTexts!.includes(p.text)) {
+        p.weight = 1;
+      }
+    });
+  } else {
+    // Default to 'House' if no preset is found.
+    const housePrompt = promptsByText.get('House');
+    if (housePrompt) housePrompt.weight = 1;
+  }
+
+  // Fallback: Ensure at least one prompt is active.
+  const hasActivePrompt = [...prompts.values()].some(p => p.weight > 0);
+  if (!hasActivePrompt) {
+    const housePrompt = promptsByText.get('House');
+    if (housePrompt) housePrompt.weight = 1;
+  }
+
+  // Try to load the user's saved genre arrangement.
+  let genreOrder: {promptId: string}[] = [];
+  let loadedFromStorage = false;
+  try {
+    const savedArrangementJSON = localStorage.getItem('genreOrder');
+    if (savedArrangementJSON) {
+      const savedArrangement = JSON.parse(savedArrangementJSON);
+
+      // Validate that the saved arrangement contains the exact same prompts as the current app version.
+      const allCurrentPromptIds = new Set(prompts.keys());
+      const allSavedPromptIds = new Set(savedArrangement.map((p: {promptId: string}) => p.promptId));
+
+      const isSameSize = allCurrentPromptIds.size === allSavedPromptIds.size;
+      const allSavedExistInCurrent = [...allSavedPromptIds].every(id => typeof id === 'string' && allCurrentPromptIds.has(id));
+
+      if (isSameSize && allSavedExistInCurrent && Array.isArray(savedArrangement)) {
+        // The saved arrangement is valid, use it.
+        genreOrder = savedArrangement;
+        loadedFromStorage = true;
+      } else {
+        // Invalidate stored arrangement if it's out of sync with GENRE_DATA
+        localStorage.removeItem('genreOrder');
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load or parse genre arrangement, using default.', e);
+  }
+
+  // If no valid arrangement was loaded, create the default layout from GENRE_DATA.
+  if (!loadedFromStorage) {
+    genreOrder = GENRE_DATA.flat().map(genre => ({ promptId: promptsByText.get(genre.text)!.promptId }));
+  }
+
+  return { prompts, genreOrder };
 }
 
-const DEFAULT_PROMPTS = [
-  // House Genres
-  { color: '#ff6600', text: 'House' },
-  { color: '#5DADE2', text: 'Chill House' },
-  { color: '#34A85A', text: 'Deep House' },
-  { color: '#1ABC9C', text: 'Prog House' },
-  { color: '#2af6de', text: 'Tech House' },
-  { color: '#6c5ce7', text: 'Afro House' },
-  { color: '#00b894', text: 'Organic House' },
-  { color: '#e84393', text: 'Bass House' },
-  { color: '#00cec9', text: 'Lo-Fi House' },
-  { color: '#fd79a8', text: 'Slap House' },
-  { color: '#6c5ce7', text: 'G-House' },
-  { color: '#ff7675', text: 'Big Room' },
-  { color: '#a29bfe', text: 'Future House' },
-  { color: '#fd79a8', text: 'Tropical House' },
-  { color: '#e84393', text: 'Jersey Club' },
-  
-  // Techno Genres
-  { color: '#ff0000', text: 'Techno' },
-  { color: '#ff6b6b', text: 'Melodic Techno' },
-  { color: '#00b894', text: 'Minimal Techno' },
-  { color: '#d63031', text: 'Hard Techno' },
-  { color: '#e17055', text: 'Acid Techno' },
-  { color: '#6c5ce7', text: 'Indust Techno' },
-  { color: '#00b894', text: 'Dub Techno' },
-  { color: '#fd79a8', text: 'Hypno Techno' },
-  { color: '#a29bfe', text: 'Schranz' },
-  { color: '#00cec9', text: 'Ambient Tech' },
-  
-  // Drum and Bass & Related
-  { color: '#ff25f6', text: 'Drum and Bass' },
-  { color: '#ff9f43', text: 'Jungle' },
-  { color: '#5f27cd', text: 'Grime' },
-  { color: '#00cec9', text: 'UK Garage' },
-  { color: '#1dd1a1', text: 'Fut Garage' },
-  
-  // Bass Music
-  { color: '#ffdd28', text: 'Dubstep' },
-  { color: '#9900ff', text: 'Future Bass' },
-  { color: '#ff9f43', text: 'Trap' },
-  { color: '#e84393', text: 'Footwork' },
-  { color: '#00cec9', text: 'Juke' },
-  { color: '#ff9f43', text: 'Breakbeat' },
-  
-  // Melodic & Atmospheric
-  { color: '#6c5ce7', text: 'Chillwave' },
-  { color: '#00b894', text: 'Synthwave' },
-  { color: '#fd79a8', text: 'Dream Pop' },
-  { color: '#a29bfe', text: 'Shoegaze' },
-  { color: '#ff9f43', text: 'New Age' },
-  
-  // Global & World Influences
-  { color: '#e17055', text: 'Baile Funk' },
-  { color: '#6c5ce7', text: 'Kuduro' },
-  { color: '#00b894', text: 'Gqom' },
-  { color: '#fd79a8', text: 'Amapiano' },
-  { color: '#a29bfe', text: 'Afrobeat' },
-  { color: '#00cec9', text: 'Cumbia' },
-  { color: '#00cec9', text: 'E-Swing' },
-  
-  // Other Electronic
-  { color: '#6c5ce7', text: 'Electro' },
-  { color: '#ff9f43', text: 'Hyperpop' },
-  { color: '#1dd1a1', text: 'Decon Club' },
-  { color: '#5f27cd', text: 'Witch House' },
-  { color: '#ff9f43', text: 'Vaporwave' },
-  { color: '#e84393', text: 'Glitch' },
-  { color: '#00cec9', text: 'IDM' },
-  { color: '#6c5ce7', text: 'Breakcore' },
-  { color: '#ff6b6b', text: 'Hardstyle' },
-  { color: '#a29bfe', text: 'Eurodance' },
-  { color: '#00b894', text: 'Trance' }
+const GENRE_DATA = [
+  [{ text: 'House', color: '#ff4b4b' }, { text: 'Chill House', color: '#be4bff' }, { text: 'Deep House', color: '#9135ff' }, { text: 'Prog House', color: '#4bff89' }, { text: 'Tech House', color: '#4bffff' }, { text: 'Afro House', color: '#4bb3ff' }, { text: 'Organic House', color: '#4bffb3' }, { text: 'Bass House', color: '#ffde4b' }],
+  [{ text: 'Lo-Fi House', color: '#ff924b' }, { text: 'Slap House', color: '#ff4ba5' }, { text: 'G-House', color: '#ff4b4b' }, { text: 'Big Room', color: '#ffde4b' }, { text: 'Future House', color: '#be4bff' }, { text: 'Tropical House', color: '#4bff89' }, { text: 'Jersey Club', color: '#4bb3ff' }, { text: 'Techno', color: '#9135ff' }],
+  [{ text: 'Melodic Techno', color: '#be4bff' }, { text: 'Minimal Techno', color: '#9135ff' }, { text: 'Hard Techno', color: '#ff4b4b' }, { text: 'Acid Techno', color: '#ffde4b' }, { text: 'Indust Techno', color: '#ff924b' }, { text: 'Dub Techno', color: '#4bff89' }, { text: 'Hypno Techno', color: '#4bffff' }],
+  [{ text: 'Schranz', color: '#4bb3ff' }, { text: 'Ambient Tech', color: '#4bffb3' }, { text: 'Drum and Bass', color: '#ffde4b' }, { text: 'Jungle', color: '#ff924b' }, { text: 'Grime', color: '#ff4ba5' }, { text: 'UK Garage', color: '#be4bff' }, { text: 'Fut Garage', color: '#9135ff' }, { text: 'Dubstep', color: '#ff4b4b' }],
+  [{ text: 'Future Bass', color: '#9135ff' }, { text: 'Trap', color: '#ff4b4b' }, { text: 'Footwork', color: '#ff924b' }, { text: 'Juke', color: '#ffde4b' }, { text: 'Breakbeat', color: '#4bff89' }, { text: 'Chillwave', color: '#4bffff' }, { text: 'Synthwave', color: '#be4bff' }, { text: 'Dream Pop', color: '#ff4ba5' }, { text: 'Shoegaze', color: '#4bb3ff' }],
+  [{ text: 'New Age', color: '#4bffb3' }, { text: 'Baile Funk', color: '#4bff89' }, { text: 'Kuduro', color: '#ffde4b' }, { text: 'Gqom', color: '#ff924b' }, { text: 'Amapiano', color: '#ff4ba5' }, { text: 'Altobeat', color: '#ff4b4b' }, { text: 'Cumbia', color: '#be4bff' }, { text: 'E-Swing', color: '#9135ff' }, { text: 'Electro', color: '#4bb3ff' }],
+  [{ text: 'Hyperpop', color: '#ff4ba5' }, { text: 'Decon Club', color: '#9135ff' }, { text: 'Witch House', color: '#be4bff' }, { text: 'Vaporwave', color: '#4bb3ff' }, { text: 'Glitch', color: '#4bffff' }, { text: 'IDM', color: '#4bff89' }, { text: 'Breakcore', color: '#ffde4b' }, { text: 'Hardstyle', color: '#ff924b' }, { text: 'Eurodance', color: '#ff4b4b' }],
+  [{ text: 'Trance', color: '#4bffff' }]
 ];
+
 
 main();

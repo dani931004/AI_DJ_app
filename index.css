@@ -1,15 +1,15 @@
-html, body {
+html {
   height: 100%;
   margin: 0;
-}
-body {
   font-family: 'Google Sans', sans-serif;
   font-size: 14px;
+  overflow: hidden;
+  background-color: #0b021a;
+  background-image: radial-gradient(at 0% 0%, hsla(271, 76%, 10%, 1) 0px, transparent 50%),
+                    radial-gradient(at 98% 1%, hsla(299, 88%, 15%, 1) 0px, transparent 50%);
 }
-body.dragging {
-  cursor: ns-resize;
-}
-body.dragging * {
-  user-select: none;
-  pointer-events: none;
+
+body {
+  height: 100%;
+  margin: 0;
 }

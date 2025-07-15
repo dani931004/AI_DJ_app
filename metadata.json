@@ -1,5 +1,5 @@
 {
-  "name": "PromptDJ MIDI",
+  "name": "AI DJ",
   "description": "Control real time music with a MIDI controller.",
   "requestFramePermissions": [],
   "prompt": ""

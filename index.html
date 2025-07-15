@@ -1,23 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
   <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap: https://ssl.gstatic.com; connect-src * 'self' https: wss:; style-src 'self' 'unsafe-inline'; media-src *; img-src 'self' data: content:;">
-    <base href="./">
-    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="/index.css">
     <script type="importmap">
       {
         "imports": {
           "@google/genai": "https://esm.sh/@google/genai@^1.0.0",
           "lit/": "https://esm.sh/lit@^3.3.0/",
-          "lit": "https://esm.sh/lit@^3.3.0"
+          "lit": "https://esm.sh/lit@^3.3.0",
+          "sortablejs": "https://esm.sh/sortablejs@1.15.2"
         }
       }
     </script>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
