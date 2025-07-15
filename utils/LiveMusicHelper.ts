@@ -20,7 +20,7 @@ export class LiveMusicHelper extends EventTarget {
 
   private filteredPrompts = new Set<string>();
   private nextStartTime = 0;
-  private bufferTime = 2;
+  private bufferTime = 4;
 
   public readonly audioContext: AudioContext;
   public extraDestination: AudioNode | null = null;
@@ -123,7 +123,7 @@ export class LiveMusicHelper extends EventTarget {
     const audioBuffer = await decodeAudioData(
       decode(audioChunks[0].data!),
       this.audioContext,
-      30000,
+      45000,
       2,
     );
     const source = this.audioContext.createBufferSource();
