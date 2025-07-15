@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
 import type { PlaybackState, Prompt } from './types';
 import { GoogleGenAI, LiveMusicFilteredPrompt } from '@google/genai';
 import { PromptDjMidi } from './components/PromptDjMidi';
@@ -19,31 +17,29 @@ const model = 'lyria-realtime-exp';
 function main() {
   const { prompts, genreOrder } = buildInitialPrompts();
 
-  const root = ReactDOM.createRoot(document.getElementById('root')!);
-  root.render(
-    <React.StrictMode>
-      <PromptDjMidi prompts={prompts} genreOrder={genreOrder} ai={ai} />
-      <ToastMessage />
-    </React.StrictMode>
-  );
+  const pdjMidi = new PromptDjMidi(prompts, genreOrder, ai);
+  document.body.appendChild(pdjMidi);
+
+  const toastMessage = new ToastMessage();
+  document.body.appendChild(toastMessage);
 
   const liveMusicHelper = new LiveMusicHelper(ai, model, prompts);
 
   const audioAnalyser = new AudioAnalyser(liveMusicHelper.audioContext);
   liveMusicHelper.extraDestination = audioAnalyser.node;
 
-  const handlePromptsChanged = (e: CustomEvent<Map<string, Prompt>>) => {
+  pdjMidi.addEventListener('prompts-changed', ((e: Event) => {
     const customEvent = e as CustomEvent<Map<string, Prompt>>;
     const prompts = customEvent.detail;
     liveMusicHelper.setWeightedPrompts(prompts);
   }));
 
-  const handleVolumeChanged = (e: CustomEvent<number>) => {
+  pdjMidi.addEventListener('volume-changed', ((e: Event) => {
     const customEvent = e as CustomEvent<number>;
     liveMusicHelper.setVolume(customEvent.detail);
   }));
 
-  const handlePlayPause = () => {
+  pdjMidi.addEventListener('play-pause', () => {
     // This is an async call, so we should handle potential errors
     // even if the underlying implementation is expected to catch them.
     (async () => {
@@ -59,7 +55,7 @@ function main() {
         }
       }
     })();
-  };
+  });
 
   pdjMidi.addEventListener('start-recording', () => {
     liveMusicHelper.startRecording();

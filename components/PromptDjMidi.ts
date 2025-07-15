@@ -3,20 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { css, html, LitElement, svg, PropertyValues } from 'lit';
-
-interface AudioAnalyserElement extends HTMLElement {
-  audioContext: AudioContext;
-  outputNode: GainNode;
-}
-
-declare global {
-  interface Window {
-    AudioAnalyser: AudioAnalyserElement;
-  }
-  interface HTMLElementTagNameMap {
-    'audio-analyser': AudioAnalyserElement;
-  }
-}
 import { customElement, property, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import Sortable from 'sortablejs';
@@ -278,33 +264,9 @@ export class PromptDjMidi extends LitElement {
 
   override updated(changedProperties: PropertyValues) {
     if (changedProperties.has('playbackState')) {
-      // Maintain Auto DJ state during session restarts
-      if (this.playbackState === 'stopped') {
-        // Store the auto-play state in localStorage
-        try {
-          localStorage.setItem('autoDjActive', String(this.isAutoDjActive));
-          // Keep the UI state active but stop the interval
-          if (this.autoDjIntervalId) {
-            clearTimeout(this.autoDjIntervalId);
-            this.autoDjIntervalId = null;
-          }
-        } catch (e) {
-          console.error('Failed to save auto-play state:', e);
-        }
-      } else if (this.playbackState === 'playing') {
-        // Restore auto-play state from localStorage when playback resumes
-        try {
-          const savedAutoDjState = localStorage.getItem('autoDjActive');
-          if (savedAutoDjState === 'true') {
-            this.isAutoDjActive = true;
-            // Start auto-play with a small delay to ensure smooth transition
-            this.autoDjIntervalId = window.setTimeout(() => {
-              this.fetchAutoDjPlaylist();
-            }, 500); // Reduced delay for smoother transition
-          }
-        } catch (e) {
-          console.error('Failed to restore auto-play state:', e);
-        }
+      // Only stop Auto DJ if playback is completely stopped, not if it's paused or loading
+      if (this.playbackState === 'stopped' && this.isAutoDjActive) {
+        this.stopAutoDj();
       }
     }
   }
@@ -368,16 +330,6 @@ export class PromptDjMidi extends LitElement {
   private async fetchAutoDjPlaylist() {
     if (this.isAutoDjLoading) return;
     this.isAutoDjLoading = true;
-    
-    // Start a smooth transition by gradually reducing volume
-    const audioAnalyser = document.querySelector('audio-analyser');
-    if (audioAnalyser) {
-      const analyser = audioAnalyser as unknown as AudioAnalyserElement;
-      if (analyser && analyser.audioContext) {
-        const gainNode = analyser.outputNode as GainNode;
-        gainNode.gain.setTargetAtTime(0.5, analyser.audioContext.currentTime, 0.1);
-      }
-    }
 
     const availablePrompts = [...this.prompts.values()].filter(p => !this.filteredPrompts.has(p.text));
     if (availablePrompts.length < 3) {
@@ -393,84 +345,47 @@ export class PromptDjMidi extends LitElement {
     let promptText = `You are an expert DJ. The current mix is playing these genres: ${activeGenreNames.join(', ')}. Create a DJ setlist of 4 creative and harmonious genre combinations to transition to, one after the other. The setlist should flow well from the current genres and from one combination to the next. For each combination in the setlist, select 2 or 3 genres. Available genres: ${availableGenreNames.join(', ')}`;
 
     try {
-      try {
-        const response = await this.ai.models.generateContent({
-          model: this.currentModel,
-          contents: promptText,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                setlist: {
-                  type: Type.ARRAY,
-                  description: 'A DJ setlist of 4 creative and harmonious genre combinations.',
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      genres: {
-                        type: Type.ARRAY,
-                        description: 'A combination of 2 or 3 genres for one part of the set.',
-                        items: { type: Type.STRING }
-                      }
+      const response = await this.ai.models.generateContent({
+        model: this.currentModel,
+        contents: promptText,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              setlist: {
+                type: Type.ARRAY,
+                description: 'A DJ setlist of 4 creative and harmonious genre combinations.',
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    genres: {
+                      type: Type.ARRAY,
+                      description: 'A combination of 2 or 3 genres for one part of the set.',
+                      items: { type: Type.STRING }
                     }
                   }
                 }
               }
             }
           }
-        });
+        },
+      });
 
-        if (!this.isAutoDjActive) {
-          this.isAutoDjLoading = false;
-          return;
-        }
-
-        const text = response.text;
-        if (!text) {
-          throw new Error("No response text received from AI");
-        }
-        
-        const jsonResponse = JSON.parse(text);
-        const setlist = jsonResponse.setlist;
-
-        if (!setlist || !Array.isArray(setlist) || setlist.length === 0 || !setlist[0].genres) {
-          throw new Error("AI returned invalid or empty setlist data.");
-        }
-
-        this.autoDjPlaylist = setlist;
-        this.autoDjCurrentIndex = 0;
-
-        // Start applying the transition with a smooth volume increase
-        const audioAnalyser = document.querySelector('audio-analyser');
-        if (audioAnalyser) {
-          const analyser = audioAnalyser as unknown as AudioAnalyserElement;
-          if (analyser && analyser.outputNode && analyser.audioContext) {
-            const gainNode = analyser.outputNode as GainNode;
-            gainNode.gain.setTargetAtTime(1.0, analyser.audioContext.currentTime, 0.1);
-          }
-        }
-        
-        this.applyCurrentAutoDjTransition();
-
-        // On success, reset to the primary model for the next fetch.
-        this.currentModel = 'gemini-2.0-flash-lite';
+      if (!this.isAutoDjActive) {
         this.isAutoDjLoading = false;
-
-      } catch (error) {
-        console.error("Error fetching auto DJ playlist:", error);
-        this.isAutoDjLoading = false;
-        throw error;
+        return;
       }
-      if (audioAnalyser) {
-        const analyser = audioAnalyser as unknown as AudioAnalyserElement;
-        if (analyser && analyser.outputNode && analyser.audioContext) {
 
-          const gainNode = analyser.outputNode as GainNode;
-          gainNode.gain.setTargetAtTime(1.0, analyser.audioContext.currentTime, 0.1);
-        }
+      const jsonResponse = JSON.parse(response.text);
+      const setlist = jsonResponse.setlist;
+
+      if (!setlist || !Array.isArray(setlist) || setlist.length === 0 || !setlist[0].genres) {
+        throw new Error("AI returned invalid or empty setlist data.");
       }
-      
+
+      this.autoDjPlaylist = setlist;
+      this.autoDjCurrentIndex = 0;
       this.applyCurrentAutoDjTransition();
 
       // On success, reset to the primary model for the next fetch.
