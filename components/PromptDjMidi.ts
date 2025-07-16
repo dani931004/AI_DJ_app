@@ -203,7 +203,7 @@ export class PromptDjMidi extends LitElement {
   @state() private isRecording = false;
 
   // Auto DJ State
-  @state() private isAutoDjActive = false;
+  @state() isAutoDjActive = false;
   @state() private isAutoDjLoading = false;
   @state() private rateLimitCooldownActive = false;
   @state() private autoDjPlaylist: { genres: string[] }[] = [];
@@ -342,7 +342,7 @@ export class PromptDjMidi extends LitElement {
     const availableGenreNames = availablePrompts.map(p => p.text);
     const activeGenreNames = [...this.prompts.values()].filter(p => p.weight > 0).map(p => p.text);
 
-    let promptText = `You are an expert DJ. The current mix is playing these genres: ${activeGenreNames.join(', ')}. Create a DJ setlist of 4 creative and harmonious genre combinations to transition to, one after the other. The setlist should flow well from the current genres and from one combination to the next. For each combination in the setlist, select 2 or 3 genres. Available genres: ${availableGenreNames.join(', ')}`;
+    let promptText = `You are an expert DJ with a deep understanding of music genres and their characteristics. The current mix is playing these genres: ${activeGenreNames.join(', ')}. Create a DJ setlist of 4 creative and harmonious genre combinations to transition to, one after the other. The setlist should flow well from the current genres and from one combination to the next. For each combination in the setlist, select 2 or 3 genres. Available genres: ${availableGenreNames.join(', ')}`;
 
     try {
       const response = await this.ai.models.generateContent({

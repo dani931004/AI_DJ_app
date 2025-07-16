@@ -11,6 +11,12 @@ import { ToastMessage } from './components/ToastMessage';
 import { LiveMusicHelper } from './utils/LiveMusicHelper';
 import { AudioAnalyser } from './utils/AudioAnalyser';
 
+declare global {
+  interface Window {
+    pdjMidi?: PromptDjMidi;
+  }
+}
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: 'v1alpha' });
 const model = 'lyria-realtime-exp';
 
@@ -22,6 +28,9 @@ function main() {
 
   const toastMessage = new ToastMessage();
   document.body.appendChild(toastMessage);
+
+  // Make pdjMidi globally available for state access during reconnection
+  (window as any).pdjMidi = pdjMidi;
 
   const liveMusicHelper = new LiveMusicHelper(ai, model, prompts);
 

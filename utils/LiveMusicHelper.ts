@@ -93,7 +93,8 @@ export class LiveMusicHelper extends EventTarget {
 
   private handleConnectionClose(event?: CloseEvent) {
     const wasActive = this.isActive();
-    const wasAutoDjActive = (this as any).isAutoDjActive; // Access the auto DJ state if it exists
+    // Get the auto DJ state from the global window object if it exists
+    const wasAutoDjActive = window.pdjMidi?.isAutoDjActive || false;
     this.stop();
     if (wasActive && this.retryCount < this.maxRetries) {
       this.retryCount++;
@@ -108,6 +109,11 @@ export class LiveMusicHelper extends EventTarget {
               detail: { wasAutoDjActive } 
             }));
           }
+        }).catch(error => {
+          console.error('Failed to restore playback after reconnection:', error);
+          this.dispatchEvent(new CustomEvent('error', { 
+            detail: `Failed to restore playback: ${error.message || 'Unknown error'}` 
+          }));
         });
       }, delay);
     } else if (wasActive) {
@@ -290,7 +296,7 @@ export class LiveMusicHelper extends EventTarget {
     this.recorder.onstop = () => {
       const blob = new Blob(this.recordedChunks, { type: options.mimeType });
       const url = URL.createObjectURL(blob);
-      const filename = `prompt-dj-recording-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+      const filename = `AI_DJ_recording-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
       this.dispatchEvent(new CustomEvent('recording-finished', { detail: { url, filename } }));
     };
 
