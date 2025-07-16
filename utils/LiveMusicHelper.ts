@@ -93,13 +93,23 @@ export class LiveMusicHelper extends EventTarget {
 
   private handleConnectionClose(event?: CloseEvent) {
     const wasActive = this.isActive();
+    const wasAutoDjActive = (this as any).isAutoDjActive; // Access the auto DJ state if it exists
     this.stop();
     if (wasActive && this.retryCount < this.maxRetries) {
       this.retryCount++;
       const delay = this.retryDelay * Math.pow(2, this.retryCount - 1);
       const reason = event ? `code ${event.code}` : 'no reason';
       this.dispatchEvent(new CustomEvent('error', { detail: `Connection closed (${reason}). Retrying in ${delay / 1000}s... (Attempt ${this.retryCount}/${this.maxRetries})` }));
-      setTimeout(() => this.play(), delay);
+      setTimeout(() => {
+        this.play().then(() => {
+          if (wasAutoDjActive) {
+            // Dispatch an event to notify that auto DJ should be restarted
+            this.dispatchEvent(new CustomEvent('connection-restored', { 
+              detail: { wasAutoDjActive } 
+            }));
+          }
+        });
+      }, delay);
     } else if (wasActive) {
       const reason = event ? `code ${event.code}, reason: ${event.reason || 'n/a'}` : 'no reason';
       this.dispatchEvent(new CustomEvent('error', { detail: `Connection closed. ${reason}. Max retries reached.` }));

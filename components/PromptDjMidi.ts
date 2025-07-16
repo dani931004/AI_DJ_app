@@ -377,6 +377,9 @@ export class PromptDjMidi extends LitElement {
         return;
       }
 
+      if (!response.text) {
+        throw new Error("No response text received from the AI service.");
+      }
       const jsonResponse = JSON.parse(response.text);
       const setlist = jsonResponse.setlist;
 
@@ -504,7 +507,7 @@ export class PromptDjMidi extends LitElement {
     this.saveActiveGenres();
   }
 
-  private startAutoDj() {
+  public startAutoDj() {
     this.isAutoDjActive = true;
     this.rateLimitCooldownActive = false; // Reset cooldown
     this.currentModel = 'gemini-2.0-flash-lite'; // Always start with the primary model

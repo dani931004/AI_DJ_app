@@ -65,6 +65,14 @@ function main() {
     liveMusicHelper.stopRecording();
   });
 
+  liveMusicHelper.addEventListener('connection-restored', ((e: Event) => {
+    const customEvent = e as CustomEvent<{wasAutoDjActive: boolean}>;
+    if (customEvent.detail.wasAutoDjActive) {
+      // Restart auto DJ if it was active before the connection was lost
+      pdjMidi.startAutoDj();
+    }
+  }) as EventListener);
+
   liveMusicHelper.addEventListener('recording-finished', ((e: Event) => {
     const customEvent = e as CustomEvent<{url: string, filename: string}>;
     pdjMidi.onRecordingFinished(customEvent.detail);
