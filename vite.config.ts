@@ -5,9 +5,9 @@ export default defineConfig(({ mode }) => {
     // Load env variables based on the current mode
     const env = loadEnv(mode, process.cwd(), '');
     
-    // Expose env variables to the client
+    // Only expose specific environment variables to the client
     const envWithProcessPrefix = {
-        'process.env': `(${JSON.stringify(env)})`
+        'process.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || '')
     };
     
     return {
