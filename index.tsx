@@ -17,7 +17,13 @@ declare global {
   }
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: 'v1alpha' });
+// Get API key from Vite environment variables
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+if (!apiKey) {
+    console.error('GEMINI_API_KEY is not set. Please check your environment variables.');
+}
+
+const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1alpha' });
 const model = 'lyria-realtime-exp';
 
 function main() {
