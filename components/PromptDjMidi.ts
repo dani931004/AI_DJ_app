@@ -344,6 +344,14 @@ export class PromptDjMidi extends LitElement {
 
     let promptText = `You are an expert DJ with a deep understanding of music genres and their characteristics. You are especially good at following the theme of the current genres mix. The current mix is playing these genres: ${activeGenreNames.join(', ')}. Create a DJ setlist of 4 creative and harmonious genre combinations to transition to, one after the other. The setlist should flow well from the current genres and from one combination to the next. For each combination in the setlist, select 2 or 3 genres. Available genres: ${availableGenreNames.join(', ')}`;
 
+    // Define the model fallback sequence - same as in LiveMusicHelper
+    const modelFallbackSequence: Array<typeof this.currentModel> = [
+      'gemini-2.0-flash-lite',
+      'gemma-3-27b-it',
+      'gemma-3-12b-it',
+      'gemma-3-4b-it'
+    ];
+
     try {
       const response = await this.ai.models.generateContent({
         model: this.currentModel,
@@ -391,50 +399,61 @@ export class PromptDjMidi extends LitElement {
       this.autoDjCurrentIndex = 0;
       this.applyCurrentAutoDjTransition();
 
-      // On success, reset to the primary model for the next fetch.
-      this.currentModel = 'gemini-2.0-flash-lite';
+      // On success, keep using the current model (don't reset to primary)
       this.isAutoDjLoading = false;
 
     } catch (e) {
       console.error(`AI genre selection failed with model ${this.currentModel}.`, e);
       const message = e instanceof Error ? e.message : String(e);
 
-      if (message.includes('RESOURCE_EXHAUSTED') || message.includes('429')) {
-        // Model fallback logic
-        if (this.currentModel === 'gemini-2.0-flash-lite') {
-          // Primary failed, try first fallback
-          this.currentModel = 'gemma-3-12b-it';
-          this.dispatchEvent(new CustomEvent('error', { detail: 'Primary AI is busy. Trying alternate model...' }));
+      // Check if this is a rate limit or model availability error
+      const isModelError = message.includes('RESOURCE_EXHAUSTED') || 
+                          message.includes('429') ||
+                          message.includes('UNAVAILABLE') ||
+                          message.includes('NOT_FOUND');
+
+      if (isModelError) {
+        const currentIndex = modelFallbackSequence.indexOf(this.currentModel);
+        const nextModelIndex = currentIndex + 1;
+
+        if (nextModelIndex < modelFallbackSequence.length) {
+          // Try the next model in the sequence
+          const nextModel = modelFallbackSequence[nextModelIndex];
+          this.currentModel = nextModel;
+          this.dispatchEvent(new CustomEvent('error', { 
+            detail: `AI model unavailable. Trying ${nextModel}...` 
+          }));
+          
+          // Add a small delay before retrying
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
           this.isAutoDjLoading = false;
           this.fetchAutoDjPlaylist();
           return;
-
-        } else if (this.currentModel === 'gemma-3-12b-it') {
-          // First fallback failed, try second fallback
-          this.currentModel = 'gemma-3-4b-it';
-          this.dispatchEvent(new CustomEvent('error', { detail: 'Alternate AI is busy. Trying another model...' }));
-          this.isAutoDjLoading = false;
-          this.fetchAutoDjPlaylist();
-          return;
-
         } else {
-          // All models failed, so start a cooldown.
+          // All models failed, start cooldown
           this.rateLimitCooldownActive = true;
-          const coolDownMinutes = 5;
-          this.dispatchEvent(new CustomEvent('error', { detail: `All AI models are busy. Paused for ${coolDownMinutes} minutes. Using random genres.` }));
+          const coolDownMinutes = 3;
+          this.dispatchEvent(new CustomEvent('error', { 
+            detail: `All AI models are busy. Paused for ${coolDownMinutes} minutes. Using random genres.` 
+          }));
 
-          if (this.rateLimitTimeoutId) clearTimeout(this.rateLimitTimeoutId);
+          if (this.rateLimitTimeoutId) {
+            clearTimeout(this.rateLimitTimeoutId);
+          }
 
           this.rateLimitTimeoutId = window.setTimeout(() => {
             this.rateLimitCooldownActive = false;
             this.currentModel = 'gemini-2.0-flash-lite'; // Reset to primary after cooldown
             this.rateLimitTimeoutId = null;
             if (this.isAutoDjActive) {
-              this.dispatchEvent(new CustomEvent('error', { detail: 'Auto DJ is back online. Resuming AI suggestions.' }));
+              this.dispatchEvent(new CustomEvent('error', { 
+                detail: 'Auto DJ is back online. Resuming AI suggestions.' 
+              }));
             }
           }, coolDownMinutes * 60 * 1000);
 
-          this.changeGenresRandomly(); // Use random fallback during cooldown.
+          this.changeGenresRandomly(); // Use random fallback during cooldown
           this.isAutoDjLoading = false;
         }
       } else {

@@ -12,6 +12,7 @@ export class LiveMusicHelper extends EventTarget {
   private model: string;
 
   private session: LiveMusicSession | null = null;
+  private onModelChanged: ((model: string) => void) | null = null;
 
   private retryCount = 0;
   private readonly maxRetries = 5;
@@ -34,10 +35,16 @@ export class LiveMusicHelper extends EventTarget {
   private recorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
 
-  constructor(ai: GoogleGenAI, model: string, initialPrompts: Map<string, Prompt>) {
+  constructor(
+    ai: GoogleGenAI, 
+    model: string, 
+    initialPrompts: Map<string, Prompt>,
+    onModelChanged?: (model: string) => void
+  ) {
     super();
     this.ai = ai;
     this.model = model;
+    this.onModelChanged = onModelChanged || null;
     this.prompts = initialPrompts;
     this.audioContext = new AudioContext({ sampleRate: 48000 });
     this.outputNode = this.audioContext.createGain();
@@ -48,9 +55,10 @@ export class LiveMusicHelper extends EventTarget {
     return this._playbackState;
   }
 
-  private connect(): Promise<LiveMusicSession> {
-    return this.ai.live.music.connect({
-      model: this.model,
+  private async connect(): Promise<LiveMusicSession> {
+    try {
+      const session = await this.ai.live.music.connect({
+        model: this.model,
       callbacks: {
         onmessage: async (e: LiveMusicServerMessage) => {
           if (e.setupComplete) {
@@ -71,24 +79,59 @@ export class LiveMusicHelper extends EventTarget {
         onclose: (event?: CloseEvent) => {
           this.handleConnectionClose(event);
         },
-      },
-    });
+        },
+      });
+      return session;
+    } catch (error) {
+      console.error(`Failed to connect with model ${this.model}:`, error);
+      throw error; // Re-throw to be handled by the caller
+    }
   }
 
-  private handleConnectionError(e: ErrorEvent) {
-    const wasActive = this.isActive();
+  private async handleConnectionError(error: ErrorEvent) {
+    console.error('LiveMusicHelper.handleConnectionError', error);
+    const wasActive = this._playbackState === 'playing';
     this.stop();
-    if (wasActive && this.retryCount < this.maxRetries) {
-      this.retryCount++;
-      const delay = this.retryDelay * Math.pow(2, this.retryCount - 1);
-      const message = e.error?.message || e.message || 'Unknown error';
-      this.dispatchEvent(new CustomEvent('error', { detail: `Connection error (${message}). Retrying in ${delay / 1000}s... (Attempt ${this.retryCount}/${this.maxRetries})` }));
-      // setTimeout(() => this.play(), delay);
-    } else if (wasActive) {
-      const message = e.error?.message || e.message;
-      this.dispatchEvent(new CustomEvent('error', { detail: `Connection error: ${message}. Max retries reached.` }));
-      this.retryCount = 0;
+    
+    // Define the model fallback sequence
+    const modelFallbackSequence: string[] = [
+      'gemini-2.0-flash-lite',
+      'gemma-3-27b-it',
+      'gemma-3-12b-it',
+      'gemma-3-4b-it'
+    ];
+    
+    // Find the current model in the sequence
+    const currentIndex = modelFallbackSequence.indexOf(this.model);
+    const nextModel = currentIndex < modelFallbackSequence.length - 1 
+      ? modelFallbackSequence[currentIndex + 1] 
+      : null;
+    
+    // Try to reconnect with a different model if available
+    if (this.onModelChanged && nextModel) {
+      console.log(`Trying to reconnect with model: ${nextModel}`);
+      this.model = nextModel;
+      this.onModelChanged(nextModel);
+      
+      // Add a small delay before reconnecting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      if (wasActive) {
+        try {
+          await this.play();
+          return;
+        } catch (retryError) {
+          console.error('Failed to reconnect with fallback model:', retryError);
+        }
+      }
     }
+    
+    // If we get here, either we couldn't switch models or reconnection failed
+    const message = error.error?.message || error.message;
+    this.dispatchEvent(new CustomEvent('error', { 
+      detail: `Connection error: ${message}. ${nextModel ? 'Model fallback failed.' : 'No more fallback models available.'}` 
+    }));
+    this.retryCount = 0;
   }
 
   private handleConnectionClose(event?: CloseEvent) {
