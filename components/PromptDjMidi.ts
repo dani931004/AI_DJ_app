@@ -327,13 +327,68 @@ export class PromptDjMidi extends LitElement {
     }
   }
 
+  /**
+   * Parses a plain text response into a structured setlist format
+   * @param text The plain text response from the AI
+   * @returns Array of genre combinations
+   */
+  private parseTextSetlist(text: string): {genres: string[]}[] {
+    // Clean up the text and split into lines
+    const lines = text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    const setlist: {genres: string[]}[] = [];
+    let currentGenres: string[] = [];
+
+    for (const line of lines) {
+      // Look for patterns like "1. genre1, genre2, genre3" or "- genre1, genre2"
+      const match = line.match(/^(?:\d+[.)]\s*|-\s*)?(.+)$/);
+      if (match) {
+        // Split by commas, then clean each genre
+        const genres = match[1]
+          .split(',')
+          .map(g => g.trim())
+          .filter(g => g.length > 0);
+        
+        if (genres.length >= 2 && genres.length <= 3) {
+          setlist.push({ genres });
+        } else if (genres.length > 0) {
+          // If we find a single genre, add it to the current set
+          currentGenres.push(...genres);
+          if (currentGenres.length >= 3) {
+            setlist.push({ genres: [...currentGenres] });
+            currentGenres = [];
+          }
+        }
+      }
+    }
+
+    // If we have remaining genres, add them as a final set
+    if (currentGenres.length > 1) {
+      setlist.push({ genres: currentGenres });
+    }
+
+    // Ensure we have at least 4 sets, duplicating if necessary
+    while (setlist.length < 4 && setlist.length > 0) {
+      setlist.push({...setlist[0]});
+    }
+
+    return setlist.slice(0, 4); // Return max 4 sets
+  }
+
   private async fetchAutoDjPlaylist() {
     if (this.isAutoDjLoading) return;
     this.isAutoDjLoading = true;
 
     const availablePrompts = [...this.prompts.values()].filter(p => !this.filteredPrompts.has(p.text));
     if (availablePrompts.length < 3) {
-        this.dispatchEvent(new CustomEvent('error', { detail: 'Not enough available genres for Auto DJ.' }));
+        this.dispatchEvent(new CustomEvent('error', { 
+          detail: 'Not enough available genres for Auto DJ.',
+          bubbles: true,
+          composed: true
+        }));
         this.stopAutoDj();
         this.isAutoDjLoading = false;
         return;
@@ -342,60 +397,100 @@ export class PromptDjMidi extends LitElement {
     const availableGenreNames = availablePrompts.map(p => p.text);
     const activeGenreNames = [...this.prompts.values()].filter(p => p.weight > 0).map(p => p.text);
 
-    let promptText = `You are an expert DJ with a deep understanding of music genres and their characteristics. You are especially good at following the theme of the current genres mix. The current mix is playing these genres: ${activeGenreNames.join(', ')}. Create a DJ setlist of 4 creative and harmonious genre combinations to transition to, one after the other. The setlist should flow well from the current genres and from one combination to the next. For each combination in the setlist, select 2 or 3 genres. Available genres: ${availableGenreNames.join(', ')}`;
+    let promptText = `You are an expert DJ with a deep understanding of music genres and their characteristics. You are especially good at following the theme of the current genres mix. 
+
+Current mix: ${activeGenreNames.join(', ')}
+Available genres: ${availableGenreNames.join(', ')}
+
+Create a DJ setlist of 4 creative and harmonious genre combinations to transition to, one after the other. Each combination should have 2-3 genres. Format your response with each combination on a new line, with genres separated by commas. For example:
+
+1. House, Techno, Tech House
+2. Deep House, Melodic House
+3. Progressive House, Melodic Techno
+4. Organic House, Downtempo, Ambient`;
 
     // Define the model fallback sequence - same as in LiveMusicHelper
     const modelFallbackSequence: Array<typeof this.currentModel> = [
-      'gemini-2.0-flash-lite',
+      'gemini-2.0-flash-lite',  // Primary model
       'gemma-3-27b-it',
       'gemma-3-12b-it',
       'gemma-3-4b-it'
-    ];
+    ] as const;
 
     try {
-      const response = await this.ai.models.generateContent({
-        model: this.currentModel,
-        contents: promptText,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              setlist: {
-                type: Type.ARRAY,
-                description: 'A DJ setlist of 4 creative and harmonious genre combinations.',
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    genres: {
-                      type: Type.ARRAY,
-                      description: 'A combination of 2 or 3 genres for one part of the set.',
-                      items: { type: Type.STRING }
+      let response;
+      let parsedSetlist;
+      
+      try {
+        // First try with JSON mode if the model supports it
+        response = await this.ai.models.generateContent({
+          model: this.currentModel,
+          contents: promptText,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                setlist: {
+                  type: Type.ARRAY,
+                  description: 'A DJ setlist of 4 creative and harmonious genre combinations.',
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      genres: {
+                        type: Type.ARRAY,
+                        description: 'A combination of 2 or 3 genres for one part of the set.',
+                        items: { type: Type.STRING }
+                      }
                     }
                   }
                 }
               }
             }
-          }
-        },
-      });
+          },
+        });
+        
+        // If we get here, JSON parsing worked
+        if (!response.text) {
+          throw new Error("No response text from AI");
+        }
+        const jsonResponse = JSON.parse(response.text);
+        parsedSetlist = jsonResponse.setlist;
+      } catch (jsonError) {
+        // If JSON mode fails, fall back to text parsing
+        console.log('JSON mode not supported, falling back to text parsing');
+        response = await this.ai.models.generateContent({
+          model: this.currentModel,
+          contents: promptText,
+        });
+        
+        // Parse the plain text response
+        if (!response.text) {
+          throw new Error("No response text from AI");
+        }
+        parsedSetlist = this.parseTextSetlist(response.text);
+      }
 
       if (!this.isAutoDjActive) {
         this.isAutoDjLoading = false;
         return;
       }
 
-      if (!response.text) {
+      if (!response?.text) {
         throw new Error("No response text received from the AI service.");
       }
-      const jsonResponse = JSON.parse(response.text);
-      const setlist = jsonResponse.setlist;
 
-      if (!setlist || !Array.isArray(setlist) || setlist.length === 0 || !setlist[0].genres) {
-        throw new Error("AI returned invalid or empty setlist data.");
+      // If we don't have a parsed setlist yet, try to parse it from the text
+      if (!parsedSetlist && response.text) {
+        parsedSetlist = this.parseTextSetlist(response.text);
       }
 
-      this.autoDjPlaylist = setlist;
+      if (!parsedSetlist || !Array.isArray(parsedSetlist) || parsedSetlist.length === 0 || !parsedSetlist[0]?.genres) {
+        const errorText = response?.text ? response.text.substring(0, 100) : 'No response text';
+        throw new Error("AI returned invalid or empty setlist data: " + errorText + '...');
+      }
+
+      this.autoDjPlaylist = parsedSetlist;
       this.autoDjCurrentIndex = 0;
       this.applyCurrentAutoDjTransition();
 

@@ -319,7 +319,6 @@ const GENRE_DATA = [
   // HIP HOP & R&B
   [
     { text: 'Hip Hop', color: '#ff5733' },
-    { text: 'Trap', color: '#ff4b4b' },
     { text: 'Boom Bap', color: '#33ff57' },
     { text: 'G-Funk', color: '#5733ff' },
     { text: 'Drill', color: '#6eff33' },
